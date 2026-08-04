@@ -179,11 +179,32 @@ function extractLinks(database) {
   return links;
 }
 
+function extractSymbolLinks(database) {
+  return database.prepare(`
+    SELECT edges.source, edges.target, COUNT(*) AS weight
+    FROM edges
+    JOIN nodes AS source ON source.id = edges.source
+    JOIN nodes AS target ON target.id = edges.target
+    JOIN files AS source_file ON source_file.path = source.file_path
+    JOIN files AS target_file ON target_file.path = target.file_path
+    WHERE edges.kind = 'calls'
+      AND source.kind NOT IN ('file', 'import')
+      AND target.kind NOT IN ('file', 'import')
+    GROUP BY edges.source, edges.target
+    ORDER BY edges.source, edges.target
+  `).all().map((row) => ({
+    source: row.source,
+    target: row.target,
+    weight: Number(row.weight)
+  }));
+}
+
 export function extractGraph(openedCodeGraph) {
   const { database, newestIndexedAt } = openedCodeGraph;
   const files = extractFiles(database);
   const symbols = extractSymbols(database);
   const links = extractLinks(database);
+  const symbolLinks = extractSymbolLinks(database);
   const edgeKindCounts = {};
 
   for (const link of links) {
@@ -196,6 +217,7 @@ export function extractGraph(openedCodeGraph) {
     files,
     links,
     symbols,
+    symbolLinks,
     stats: {
       fileCount: files.length,
       symbolCount: symbols.length,
