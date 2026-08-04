@@ -1,0 +1,7 @@
+node_modules/
+*.html
+playwright-report/
+test-results/
+
+# CodeGraph owns this index. Never commit or modify it.
+.codegraph/

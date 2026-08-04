@@ -1,0 +1,24 @@
+{
+  "name": "codegraph-viz",
+  "version": "1.0.0",
+  "description": "Visualize CodeGraph indexes and multi-agent coding provenance",
+  "bin": {
+    "codegraph-viz": "bin/codegraph-viz.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
