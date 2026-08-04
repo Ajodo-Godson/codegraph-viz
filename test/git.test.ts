@@ -74,6 +74,7 @@ test("attributes changes only from explicit evidence and detects overlaps", asyn
   assert.deepEqual(app?.agentIds, ["agent-a", "agent-b"]);
   assert.equal(app?.overlappingAgents, true);
   assert.deepEqual(app?.symbolIds, ["value"]);
+  assert.equal(app?.states.committed, false);
   assert.deepEqual(added?.agentIds, []);
   assert.deepEqual(added?.evidence, []);
 });
@@ -120,4 +121,15 @@ test("preserves unusual and renamed paths with NUL-delimited Git output", async 
   assert.deepEqual(snapshot.changes.map(({ path }) => path), ["new.ts", unusual, "renamed app.ts"]);
   assert.equal(snapshot.changes.find((change) => change.path === unusual)?.additions, 1);
   assert.equal(snapshot.changes.find((change) => change.path === "renamed app.ts")?.indexStatus, "R");
+});
+
+test("attributes committed rename statistics to the destination path", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "update application");
+  git(path, "mv", "--", "app.ts", "renamed app.ts");
+  git(path, "commit", "-m", "rename application");
+
+  const [rename] = inspectGit(path).recentCommits;
+  assert.deepEqual(rename?.changes, [{ path: "renamed app.ts", additions: 0, deletions: 0 }]);
 });

@@ -52,6 +52,7 @@ export function correlateChanges(
     }
   }
   const paths = [...new Set([...snapshot.changes.map((change) => change.path), ...commitsByPath.keys()])].sort();
+  const workingPaths = new Set(snapshot.changes.map((change) => change.path));
 
   return paths.map((path) => {
     const targeted = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
@@ -78,7 +79,7 @@ export function correlateChanges(
         proposed: kinds.has("edit_proposed"),
         modified: kinds.has("file_edited"),
         tested: kinds.has("test_run"),
-        committed: kinds.has("commit_created") || commitsByPath.has(path),
+        committed: !workingPaths.has(path) && (kinds.has("commit_created") || commitsByPath.has(path)),
         reviewed: kinds.has("review_received"),
         prOpened: kinds.has("pr_opened")
       },
