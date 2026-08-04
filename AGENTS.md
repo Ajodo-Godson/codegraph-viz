@@ -79,11 +79,15 @@ itself.
 
 ## 3. Environment
 
-Node, no build step, near-zero dependencies. CodeGraph itself is a Node tool and
-reports `node:sqlite` as its backend, so the runtime can read the database with
-no native module and no ORM.
+TypeScript on Node, no emitted build artifacts, near-zero dependencies. Source,
+tests, and executable entry points use `.ts`. Node executes erasable TypeScript
+directly, while `tsc --noEmit` verifies types. Do not add JavaScript counterparts
+or generated `dist` files. CodeGraph itself is a Node tool and reports
+`node:sqlite` as its backend, so the runtime can read the database with no native
+module and no ORM.
 
-Requires Node 22.5 or newer for built-in `node:sqlite`. Confirmed working on
+Requires Node 22.6 or newer for native TypeScript execution and built-in
+`node:sqlite`. Confirmed working on
 Node 24.7.
 
 ```bash
@@ -91,44 +95,49 @@ mkdir codegraph-viz && cd codegraph-viz
 git init
 npm init -y
 npm pkg set type=module
-npm pkg set engines.node=">=22.5"
+npm pkg set engines.node=">=22.6"
 
 # runtime dependency, needed only for milestone M5
 npm install @modelcontextprotocol/sdk
 
 # optional, for the render smoke test in M6
 npm install -D playwright
+
+# development-only type checking, with no emitted build output
+npm install -D typescript @types/node
 ```
 
-Dependency budget: `@modelcontextprotocol/sdk` for the server, `playwright` as a
-dev dependency for one smoke test. Nothing else. No bundler, no framework, no
-charting library, no ORM. `node:sqlite`, `node:test`, and `node:fs` cover the rest.
+Dependency budget: `@modelcontextprotocol/sdk` for the server, `playwright` for
+browser verification, and `typescript` plus `@types/node` for development-only
+type checking. Nothing else. No transpiler, bundler, framework, charting library,
+or ORM. `node:sqlite`, `node:test`, and `node:fs` cover the runtime.
 
 ## 4. Layout
 
 ```text
-bin/codegraph-viz.js     CLI entry, argument parsing only
-src/open.js              read-only DB open + schema version gate
-src/extract.js           SQL to normalized {files, links, symbols, stats}
-src/granularity.js       picks directory / file / symbol level, prunes, reports
-src/layers.js            derives layer names and palette slots from paths
-src/render.js            payload + template to one HTML string
+bin/codegraph-viz.ts     CLI entry, argument parsing only
+src/types.ts             shared graph and application contracts
+src/open.ts              read-only DB open + schema version gate
+src/extract.ts           SQL to normalized {files, links, symbols, stats}
+src/granularity.ts       picks directory / file / symbol level, prunes, reports
+src/layers.ts            derives layer names and palette slots from paths
+src/render.ts            payload + template to one HTML string
 src/template.html        the page: inline CSS and JS, no external requests
-src/provenance.js        normalized append-only agent event model and validation
-src/correlate.js         joins provenance targets to CodeGraph files and symbols
-src/git.js               read-only Git change, commit, and PR correlation
-src/mcp.js               MCP server wrapping the CLI (M5)
+src/provenance.ts        normalized append-only agent event model and validation
+src/correlate.ts         joins provenance targets to CodeGraph files and symbols
+src/git.ts               read-only Git change, commit, and PR correlation
+src/mcp.ts               MCP server wrapping the CLI (M5)
 test/                    node:test suites and golden fixtures
 test/fixtures/           small checked-in .db files for deterministic tests
 ```
 
 ## 5. Milestones
 
-**M0. Skeleton and schema gate.** `src/open.js` opens read-only, checks schema
+**M0. Skeleton and schema gate.** `src/open.ts` opens read-only, checks schema
 version, reads `project_metadata`. A bad or missing database exits with a clear
 message naming the path it tried.
 
-**M1. Extractor.** `src/extract.js` produces a normalized payload: files with
+**M1. Extractor.** `src/extract.ts` produces a normalized payload: files with
 language and symbol counts, cross-file links aggregated by (source, target) with
 a total weight and a dominant edge kind, and symbols with kind, name, line,
 signature, degree, and truncated caller and callee lists. Emit JSON so the
@@ -270,6 +279,10 @@ matching method. A timestamp alone is never sufficient evidence of authorship.
 
 - Small, reviewable changes. The extractor, the granularity logic, and the
   renderer stay independently testable.
+- All production and test modules are TypeScript. Public functions and persisted
+  payloads have explicit types in `src/types.ts`; do not use JavaScript shadow
+  files or disable type checking to land a feature.
+- Run `npm run check` before committing a completed feature.
 - Write the failing test first for anything in extract or granularity.
 - Prefer clarity over cleverness in the SQL.
 - Do not use em dashes in new docs or comments.
