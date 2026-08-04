@@ -6,6 +6,7 @@ import { extractGraph } from "./extract.ts";
 import { prepareGraph, type PrepareGraphOptions, type PreparedGraph } from "./granularity.ts";
 import type { LayerConfiguration } from "./layers.ts";
 import { openCodeGraph } from "./open.ts";
+import { readProvenanceFile } from "./provenance.ts";
 import { renderGraph } from "./render.ts";
 import type { ExtractedGraph } from "./types.ts";
 
@@ -14,6 +15,7 @@ export interface GenerateOptions extends PrepareGraphOptions {
   outputPath?: string;
   force?: boolean;
   generatedAt?: string;
+  tracePaths?: string[];
 }
 
 export interface GenerationResult {
@@ -63,6 +65,9 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
     const payload = extractGraph(opened);
     const layerConfig = options.layerConfig ?? await loadLayerConfiguration(projectPath);
     const graph = prepareGraph(payload, { ...options, layerConfig });
+    if (options.tracePaths?.length) {
+      graph.provenance = (await Promise.all(options.tracePaths.map((path) => readProvenanceFile(resolve(path))))).flat();
+    }
     await writeAtomic(outputPath, renderGraph(graph, { generatedAt: options.generatedAt }), options.force ?? false);
     const hubs = [...graph.nodes].sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0) || a.id.localeCompare(b.id)).slice(0, 3);
     return {
@@ -74,6 +79,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
         `${payload.stats.fileCount} files, ${payload.stats.symbolCount} symbols, ${payload.stats.linkCount} cross-file links`,
         `Level: ${graph.level}; showing ${graph.report.shownNodes} of ${graph.report.totalNodes} nodes`,
         `Links: showing ${graph.report.shownLinks} of ${graph.report.totalLinks}`,
+        `Provenance events: ${graph.provenance?.length ?? 0}`,
         `Top hubs: ${hubs.map((node) => `${node.id} (${node.degree ?? 0})`).join(", ") || "none"}`,
         `Output: ${outputPath}`
       ]

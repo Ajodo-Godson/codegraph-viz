@@ -12,6 +12,7 @@ export interface CliOptions extends PrepareGraphOptions {
   force: boolean;
   help: boolean;
   version: boolean;
+  tracePaths: string[];
 }
 
 export const HELP = `Usage: codegraph-viz [path] [options]
@@ -21,6 +22,7 @@ Options:
   --level <level>           auto, directory, file, or symbol
   --max-nodes <number>      Maximum visible nodes (default: 400)
   --filter <path>           Include path for symbol level; repeatable
+  --trace <file>            Import provenance JSON or JSONL; repeatable
   --json                    Write extracted JSON to stdout instead of HTML
   --force                   Replace an existing output file
   -h, --help                Show help
@@ -33,7 +35,7 @@ function valueAfter(args: string[], index: number, option: string): string {
 }
 
 export function parseArguments(args: string[], cwd = process.cwd()): CliOptions {
-  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, filterPaths: [] };
+  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, filterPaths: [], tracePaths: [] };
   let positional = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -51,6 +53,7 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
       if (!Number.isInteger(value) || value < 1) throw new Error("--max-nodes must be a positive integer.");
       result.maxNodes = value;
     } else if (argument === "--filter") result.filterPaths?.push(valueAfter(args, index++, argument));
+    else if (argument === "--trace") result.tracePaths.push(valueAfter(args, index++, argument));
     else if (argument?.startsWith("-")) throw new Error(`Unknown option ${argument}.`);
     else if (positional) throw new Error("Only one project path may be provided.");
     else { result.projectPath = argument ?? cwd; positional = true; }

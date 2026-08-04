@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { deriveLayers } from "./layers.ts";
 import type { LayerConfiguration, LayerData } from "./layers.ts";
 import type { ExtractedGraph, GraphLink, GraphSymbol } from "./types.ts";
+import type { ProvenanceEvent } from "./types.ts";
 
 export const DEFAULT_MAX_NODES = 400;
 export const FILE_LEVEL_LIMIT = 400;
@@ -37,6 +38,7 @@ export interface PreparedGraph {
   symbols: GraphSymbol[];
   layers: LayerData["layers"];
   sourceStats: ExtractedGraph["stats"];
+  provenance?: ProvenanceEvent[];
   report: {
     totalNodes: number; shownNodes: number; droppedNodes: number;
     totalLinks: number; shownLinks: number; droppedLinks: number; pruned: boolean;

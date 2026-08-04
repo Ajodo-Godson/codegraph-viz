@@ -68,3 +68,28 @@ export interface OpenedCodeGraph {
   warnings: string[];
   close(): void;
 }
+
+export interface ProvenanceTarget {
+  type: "file" | "symbol" | "command" | "commit" | "pull_request" | "task" | "other";
+  path?: string;
+  symbolId?: string;
+  value?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface ProvenanceEvent {
+  id: string;
+  timestamp: string;
+  provider: string;
+  runId: string;
+  agentId: string;
+  parentAgentId: string | null;
+  taskId: string | null;
+  kind: string;
+  knownKind: boolean;
+  target: ProvenanceTarget | null;
+  summary: string | null;
+  sourceRef: string;
+  metadata: Record<string, unknown>;
+}
