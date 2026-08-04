@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+  <title>CodeGraph map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-2: #eef2f6;
+      --text: #172033;
+      --muted: #617086;
+      --border: #d7dee8;
+      --accent: #2563eb;
+      --edge: #94a3b8;
+      --focus: #f59e0b;
+      --shadow: 0 12px 36px rgba(30, 41, 59, 0.12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --surface: #111827;
+        --surface-2: #1f2937;
+        --text: #e5edf7;
+        --muted: #9aa8bb;
+        --border: #334155;
+        --accent: #60a5fa;
+        --edge: #64748b;
+        --focus: #fbbf24;
+        --shadow: 0 12px 36px rgba(0, 0, 0, 0.34);
+      }
+    }
+    :root[data-theme="light"] { color-scheme: light; --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eef2f6; --text: #172033; --muted: #617086; --border: #d7dee8; --accent: #2563eb; --edge: #94a3b8; --focus: #f59e0b; --shadow: 0 12px 36px rgba(30, 41, 59, 0.12); }
+    :root[data-theme="dark"] { color-scheme: dark; --bg: #0b1020; --surface: #111827; --surface-2: #1f2937; --text: #e5edf7; --muted: #9aa8bb; --border: #334155; --accent: #60a5fa; --edge: #64748b; --focus: #fbbf24; --shadow: 0 12px 36px rgba(0, 0, 0, 0.34); }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; overflow-x: hidden; }
+    body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+    button, input { font: inherit; }
+    button, input[type="search"] { color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    button { cursor: pointer; padding: 7px 10px; }
+    button:hover { background: var(--surface-2); }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    .app { display: grid; grid-template-rows: auto 1fr; height: 100%; min-width: 0; }
+    header { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); min-width: 0; }
+    h1 { margin: 0; font-size: 17px; letter-spacing: -0.02em; white-space: nowrap; }
+    .meta { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta strong { color: var(--text); }
+    .spacer { flex: 1; }
+    .workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 320px; min-height: 0; }
+    aside { background: var(--surface); overflow: auto; min-width: 0; }
+    .controls { border-right: 1px solid var(--border); padding: 16px; }
+    .details { border-left: 1px solid var(--border); padding: 18px; }
+    .section { margin-bottom: 22px; }
+    .section h2, .details h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    #search { width: 100%; padding: 9px 10px; }
+    .filter { display: flex; gap: 8px; align-items: center; margin: 7px 0; min-width: 0; }
+    .swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+    .filter span:last-child { overflow: hidden; text-overflow: ellipsis; }
+    .stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    .hint { position: absolute; left: 12px; bottom: 12px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: color-mix(in srgb, var(--surface) 88%, transparent); pointer-events: none; }
+    .pruned { color: #b45309; font-weight: 650; }
+    .empty { color: var(--muted); }
+    .title { font-size: 19px; font-weight: 700; overflow-wrap: anywhere; margin-bottom: 4px; }
+    .path, code { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .facts { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; margin: 18px 0; }
+    .facts dt { color: var(--muted); }
+    .facts dd { margin: 0; overflow-wrap: anywhere; }
+    .item { display: block; width: 100%; text-align: left; margin: 6px 0; overflow-wrap: anywhere; }
+    .legend-note { color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) {
+      .workspace { grid-template-columns: 210px minmax(0, 1fr); }
+      .details { position: absolute; z-index: 4; right: 12px; top: 76px; bottom: 12px; width: min(320px, calc(100vw - 236px)); box-shadow: var(--shadow); border: 1px solid var(--border); border-radius: 12px; }
+    }
+    @media (max-width: 620px) {
+      header { gap: 8px; }
+      .meta { display: none; }
+      .workspace { grid-template-columns: 1fr; }
+      .controls { position: absolute; z-index: 5; left: 8px; top: 66px; width: 190px; max-height: 55vh; box-shadow: var(--shadow); border: 1px solid var(--border); border-radius: 12px; }
+      .details { width: min(300px, calc(100vw - 16px)); right: 8px; top: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>CodeGraph map</h1>
+      <div class="meta"><strong>__COMPLETENESS__</strong> | Generated __GENERATED_AT__ | Newest index __INDEXED_AT__</div>
+      <div class="spacer"></div>
+      <button id="reset-view" type="button">Reset view</button>
+      <button id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
+    </header>
+    <main class="workspace">
+      <aside class="controls" aria-label="Graph controls">
+        <div class="section">
+          <h2>Search</h2>
+          <input id="search" type="search" placeholder="Path or symbol" autocomplete="off">
+          <div id="search-status" class="legend-note" aria-live="polite"></div>
+        </div>
+        <div class="section">
+          <h2>Layers</h2>
+          <div id="layer-filters"></div>
+          <p class="legend-note">Layers are inferred from paths and are not CodeGraph facts.</p>
+        </div>
+        <div class="section">
+          <h2>Edge kinds</h2>
+          <div id="edge-filters"></div>
+        </div>
+      </aside>
+      <section class="stage">
+        <canvas id="graph-canvas" tabindex="0" aria-label="Code graph"></canvas>
+        <div class="hint">Drag nodes. Drag empty space to pan. Scroll to zoom.</div>
+      </section>
+      <aside id="detail-panel" class="details" aria-label="Selection details">
+        <h2>Details</h2>
+        <p class="empty">Select a node to inspect its files, symbols, callers, and callees.</p>
+      </aside>
+    </main>
+  </div>
+  <script id="graph-data" type="application/json">__GRAPH_PAYLOAD__</script>
+  <script>
+  (() => {
+    "use strict";
+    const graph = JSON.parse(document.getElementById("graph-data").textContent);
+    const canvas = document.getElementById("graph-canvas");
+    const context = canvas.getContext("2d");
+    const detailPanel = document.getElementById("detail-panel");
+    const search = document.getElementById("search");
+    const searchStatus = document.getElementById("search-status");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const layerColors = Object.fromEntries(graph.layers.map((layer) => [layer.id, layer.color]));
+    const enabledLayers = new Set(graph.layers.map((layer) => layer.id));
+    const edgeKinds = [...new Set(graph.links.flatMap((link) => Object.keys(link.kinds)))].sort();
+    const enabledEdges = new Set(edgeKinds);
+    const nodeById = new Map();
+    let width = 1;
+    let height = 1;
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    let hovered = null;
+    let selected = null;
+    let pointer = null;
+    const simulationTicks = 90;
+    let ticks = reducedMotion ? simulationTicks : 0;
+
+    function hash(value) {
+      let result = 2166136261;
+      for (let index = 0; index < value.length; index += 1) {
+        result ^= value.charCodeAt(index);
+        result = Math.imul(result, 16777619);
+      }
+      return result >>> 0;
+    }
+
+    const nodes = graph.nodes.map((node, index) => {
+      const angle = (hash(node.id) / 4294967296) * Math.PI * 2;
+      const radius = 70 + (index % 11) * 17;
+      const state = { ...node, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, vx: 0, vy: 0, radius: Math.max(5, Math.min(16, 5 + Math.log2(1 + (node.degree || 0)))) };
+      nodeById.set(state.id, state);
+      return state;
+    });
+
+    function element(tag, text, className) {
+      const item = document.createElement(tag);
+      if (text !== undefined) item.textContent = text;
+      if (className) item.className = className;
+      return item;
+    }
+
+    function addFilter(containerId, id, label, color, enabledSet) {
+      const row = element("label", undefined, "filter");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = true;
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) enabledSet.add(id); else enabledSet.delete(id);
+        draw();
+      });
+      row.append(checkbox);
+      if (color) {
+        const swatch = element("span", undefined, "swatch");
+        swatch.style.backgroundColor = color;
+        row.append(swatch);
+      }
+      row.append(element("span", label));
+      document.getElementById(containerId).append(row);
+    }
+
+    for (const layer of graph.layers) addFilter("layer-filters", layer.id, `${layer.label} (${layer.fileCount})`, layer.color, enabledLayers);
+    for (const kind of edgeKinds) addFilter("edge-filters", kind, kind, null, enabledEdges);
+    if (edgeKinds.length === 0) document.getElementById("edge-filters").append(element("p", "No visible edges", "empty"));
+
+    function nodeVisible(node) { return enabledLayers.has(node.layer); }
+    function linkVisible(link) { return enabledEdges.has(link.dominantKind) && nodeVisible(nodeById.get(link.source)) && nodeVisible(nodeById.get(link.target)); }
+    function screen(node) { return { x: width / 2 + offsetX + node.x * scale, y: height / 2 + offsetY + node.y * scale }; }
+
+    function simulate() {
+      if (nodes.length > 450) return;
+      for (let index = 0; index < nodes.length; index += 1) {
+        const left = nodes[index];
+        for (let otherIndex = index + 1; otherIndex < nodes.length; otherIndex += 1) {
+          const right = nodes[otherIndex];
+          let dx = right.x - left.x;
+          let dy = right.y - left.y;
+          const distanceSquared = Math.max(36, dx * dx + dy * dy);
+          const force = 90 / distanceSquared;
+          left.vx -= dx * force;
+          left.vy -= dy * force;
+          right.vx += dx * force;
+          right.vy += dy * force;
+        }
+      }
+      for (const link of graph.links) {
+        const source = nodeById.get(link.source);
+        const target = nodeById.get(link.target);
+        if (!source || !target) continue;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const force = (distance - 90) * 0.002 * Math.min(4, link.weight);
+        const forceX = (dx / distance) * force;
+        const forceY = (dy / distance) * force;
+        source.vx += forceX;
+        source.vy += forceY;
+        target.vx -= forceX;
+        target.vy -= forceY;
+      }
+      for (const node of nodes) {
+        node.vx = (node.vx - node.x * 0.0006) * 0.84;
+        node.vy = (node.vy - node.y * 0.0006) * 0.84;
+        node.x += node.vx;
+        node.y += node.vy;
+      }
+    }
+
+    function neighbors(id) {
+      const result = new Set([id]);
+      for (const link of graph.links) {
+        if (link.source === id) result.add(link.target);
+        if (link.target === id) result.add(link.source);
+      }
+      return result;
+    }
+
+    function draw() {
+      context.clearRect(0, 0, width, height);
+      const active = hovered || selected;
+      const neighborhood = active ? neighbors(active.id) : null;
+      context.lineCap = "round";
+      for (const link of graph.links) {
+        if (!linkVisible(link)) continue;
+        const source = screen(nodeById.get(link.source));
+        const target = screen(nodeById.get(link.target));
+        const emphasized = active && (link.source === active.id || link.target === active.id);
+        context.globalAlpha = active ? (emphasized ? 0.9 : 0.08) : 0.28;
+        context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--edge");
+        context.lineWidth = Math.max(0.7, Math.min(4, Math.sqrt(link.weight))) * (emphasized ? 1.6 : 1);
+        context.beginPath();
+        context.moveTo(source.x, source.y);
+        context.lineTo(target.x, target.y);
+        context.stroke();
+      }
+      for (const node of nodes) {
+        if (!nodeVisible(node)) continue;
+        const point = screen(node);
+        const emphasized = !neighborhood || neighborhood.has(node.id);
+        context.globalAlpha = emphasized ? 1 : 0.18;
+        context.fillStyle = layerColors[node.layer] || "#64748b";
+        context.beginPath();
+        context.arc(point.x, point.y, node.radius * Math.max(0.8, scale), 0, Math.PI * 2);
+        context.fill();
+        if (node === selected) {
+          context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--focus");
+          context.lineWidth = 3;
+          context.stroke();
+        }
+        if (node === selected || node === hovered || scale > 1.25) {
+          context.globalAlpha = emphasized ? 1 : 0.3;
+          context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text");
+          context.font = "12px system-ui, sans-serif";
+          context.fillText(node.label, point.x + node.radius + 5, point.y + 4);
+        }
+      }
+      context.globalAlpha = 1;
+    }
+
+    function frame() {
+      if (ticks < simulationTicks) {
+        simulate();
+        ticks += 1;
+        if (ticks % 30 === 0) fitView();
+        draw();
+        requestAnimationFrame(frame);
+      }
+    }
+
+    function fitView() {
+      const visible = nodes.filter(nodeVisible);
+      if (visible.length === 0) return;
+      const xs = visible.map((node) => node.x);
+      const ys = visible.map((node) => node.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const graphWidth = Math.max(80, maxX - minX);
+      const graphHeight = Math.max(80, maxY - minY);
+      scale = Math.max(0.25, Math.min(2, (width * 0.78) / graphWidth, (height * 0.78) / graphHeight));
+      offsetX = -((minX + maxX) / 2) * scale;
+      offsetY = -((minY + maxY) / 2) * scale;
+    }
+
+    function clearPanel() {
+      while (detailPanel.firstChild) detailPanel.firstChild.remove();
+      detailPanel.append(element("h2", "Details"));
+    }
+
+    function addFacts(entries) {
+      const facts = element("dl", undefined, "facts");
+      for (const [label, value] of entries) {
+        facts.append(element("dt", label), element("dd", String(value ?? "unknown")));
+      }
+      detailPanel.append(facts);
+    }
+
+    function symbolButton(symbol) {
+      const button = element("button", `${symbol.kind}: ${symbol.name}`, "item");
+      button.type = "button";
+      button.addEventListener("click", () => showSymbol(symbol));
+      return button;
+    }
+
+    function showSymbol(symbol) {
+      clearPanel();
+      detailPanel.append(element("div", symbol.name, "title"));
+      detailPanel.append(element("div", symbol.filePath, "path"));
+      addFacts([["Kind", symbol.kind], ["Lines", `${symbol.startLine ?? "?"}-${symbol.endLine ?? "?"}`], ["Signature", symbol.signature], ["Call degree", symbol.degree]]);
+      for (const [title, related] of [["Callers", symbol.callers], ["Callees", symbol.callees]]) {
+        detailPanel.append(element("h2", title));
+        if (related.length === 0) detailPanel.append(element("p", "None recorded", "empty"));
+        for (const item of related) detailPanel.append(element("div", `${item.name} | ${item.filePath}`, "path"));
+      }
+    }
+
+    function showNode(node) {
+      selected = node;
+      clearPanel();
+      detailPanel.append(element("div", node.label, "title"));
+      detailPanel.append(element("div", node.path, "path"));
+      addFacts([["Type", node.type], ["Layer", node.layer], ["Files", node.fileCount], ["Symbols", node.symbolCount], ["Weighted degree", node.degree]]);
+      const matchedSymbols = graph.symbols.filter((symbol) => node.type === "directory" ? directoryOf(symbol.filePath) === node.id : symbol.filePath === node.path);
+      detailPanel.append(element("h2", `Symbols (${matchedSymbols.length})`));
+      if (matchedSymbols.length === 0) detailPanel.append(element("p", "No indexed symbols", "empty"));
+      for (const symbol of matchedSymbols.slice(0, 100)) detailPanel.append(symbolButton(symbol));
+      draw();
+    }
+
+    function directoryOf(path) { const index = path.indexOf("/"); return index === -1 ? "(root)" : path.slice(0, index); }
+    function graphPoint(event) { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
+    function hitTest(point) {
+      let closest = null;
+      let distance = Infinity;
+      for (const node of nodes) {
+        if (!nodeVisible(node)) continue;
+        const position = screen(node);
+        const candidate = Math.hypot(position.x - point.x, position.y - point.y);
+        if (candidate <= node.radius * Math.max(1, scale) + 5 && candidate < distance) { closest = node; distance = candidate; }
+      }
+      return closest;
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      canvas.setPointerCapture(event.pointerId);
+      const point = graphPoint(event);
+      pointer = { point, last: point, node: hitTest(point), moved: false };
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      const point = graphPoint(event);
+      if (pointer) {
+        const dx = point.x - pointer.last.x;
+        const dy = point.y - pointer.last.y;
+        pointer.moved ||= Math.abs(point.x - pointer.point.x) + Math.abs(point.y - pointer.point.y) > 3;
+        if (pointer.node) { pointer.node.x += dx / scale; pointer.node.y += dy / scale; pointer.node.vx = 0; pointer.node.vy = 0; }
+        else { offsetX += dx; offsetY += dy; }
+        pointer.last = point;
+        draw();
+      } else {
+        hovered = hitTest(point);
+        canvas.style.cursor = hovered ? "pointer" : "grab";
+        draw();
+      }
+    });
+    canvas.addEventListener("pointerup", () => {
+      if (pointer && !pointer.moved && pointer.node) showNode(pointer.node);
+      pointer = null;
+    });
+    canvas.addEventListener("pointerleave", () => { if (!pointer) { hovered = null; draw(); } });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const before = graphPoint(event);
+      const previous = scale;
+      scale = Math.max(0.25, Math.min(4, scale * Math.exp(-event.deltaY * 0.001)));
+      offsetX += (before.x - width / 2 - offsetX) * (1 - scale / previous);
+      offsetY += (before.y - height / 2 - offsetY) * (1 - scale / previous);
+      draw();
+    }, { passive: false });
+    canvas.addEventListener("keydown", (event) => {
+      const movement = 24;
+      if (event.key === "ArrowLeft") offsetX += movement;
+      else if (event.key === "ArrowRight") offsetX -= movement;
+      else if (event.key === "ArrowUp") offsetY += movement;
+      else if (event.key === "ArrowDown") offsetY -= movement;
+      else if (event.key === "+" || event.key === "=") scale = Math.min(4, scale * 1.15);
+      else if (event.key === "-") scale = Math.max(0.25, scale / 1.15);
+      else return;
+      event.preventDefault();
+      draw();
+    });
+
+    search.addEventListener("input", () => {
+      const query = search.value.trim().toLowerCase();
+      if (!query) { searchStatus.textContent = ""; hovered = null; draw(); return; }
+      const nodeMatches = nodes.filter((node) => `${node.id} ${node.label}`.toLowerCase().includes(query));
+      const symbolMatches = graph.symbols.filter((symbol) => `${symbol.name} ${symbol.qualifiedName || ""} ${symbol.filePath}`.toLowerCase().includes(query));
+      searchStatus.textContent = `${nodeMatches.length} nodes, ${symbolMatches.length} symbols`;
+      const target = nodeMatches[0] || (symbolMatches[0] && nodes.find((node) => node.path === symbolMatches[0].filePath || (node.type === "directory" && node.id === directoryOf(symbolMatches[0].filePath))));
+      hovered = target || null;
+      if (target) showNode(target); else draw();
+    });
+
+    document.getElementById("reset-view").addEventListener("click", () => { fitView(); draw(); });
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const root = document.documentElement;
+      const dark = root.dataset.theme === "dark" || (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+      root.dataset.theme = dark ? "light" : "dark";
+      draw();
+    });
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = devicePixelRatio || 1;
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      draw();
+    }
+    new ResizeObserver(resize).observe(canvas);
+    resize();
+    if (graph.report.pruned) document.querySelector("header .meta strong").classList.add("pruned");
+    if (reducedMotion) { for (let index = 0; index < ticks; index += 1) simulate(); fitView(); draw(); } else requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
