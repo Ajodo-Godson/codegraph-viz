@@ -68,3 +68,71 @@ export interface OpenedCodeGraph {
   warnings: string[];
   close(): void;
 }
+
+export interface ProvenanceTarget {
+  type: "file" | "symbol" | "command" | "commit" | "pull_request" | "task" | "other";
+  path?: string;
+  symbolId?: string;
+  value?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface ProvenanceEvent {
+  id: string;
+  timestamp: string;
+  provider: string;
+  runId: string;
+  agentId: string;
+  parentAgentId: string | null;
+  taskId: string | null;
+  kind: string;
+  knownKind: boolean;
+  target: ProvenanceTarget | null;
+  summary: string | null;
+  sourceRef: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface GitChange {
+  path: string;
+  indexStatus: string;
+  worktreeStatus: string;
+  staged: boolean;
+  unstaged: boolean;
+  additions: number | null;
+  deletions: number | null;
+}
+
+export interface GitCommit {
+  sha: string;
+  author: string;
+  timestamp: string;
+  subject: string;
+}
+
+export interface GitSnapshot {
+  root: string;
+  branch: string | null;
+  head: string | null;
+  changes: GitChange[];
+  recentCommits: GitCommit[];
+}
+
+export interface ChangeCorrelation {
+  path: string;
+  eventIds: string[];
+  agentIds: string[];
+  symbolIds: string[];
+  evidence: "explicit_event_target"[];
+  states: {
+    inspected: boolean;
+    proposed: boolean;
+    modified: boolean;
+    tested: boolean;
+    committed: boolean;
+    reviewed: boolean;
+    prOpened: boolean;
+  };
+  overlappingAgents: boolean;
+}
