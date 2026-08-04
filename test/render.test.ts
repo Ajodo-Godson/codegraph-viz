@@ -131,4 +131,6 @@ test("supports clickable agent contributions and consistent filter navigation", 
   assert.match(html, /addEventListener\("hashchange"/);
   assert.match(html, /taskAgents/);
   assert.match(html, /const reviewPaths = filtersActive\(\)/);
+  assert.match(html, /activityFilters\.agent\.value = ""/);
+  assert.match(html, /showDefaultDetails\(\)/);
 });

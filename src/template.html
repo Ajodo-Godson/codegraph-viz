@@ -859,6 +859,9 @@
       if (agentId && [...activityFilters.agent.options].some((option) => option.value === agentId)) {
         activityFilters.agent.value = agentId;
         showAgentDetails(agentId);
+      } else {
+        activityFilters.agent.value = "";
+        showDefaultDetails();
       }
       renderActiveView();
     }
