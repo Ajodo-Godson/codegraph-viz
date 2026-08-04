@@ -205,7 +205,7 @@ errors, zero external requests, zero horizontal overflow, and correct rendering
 in both themes and reduced-motion mode. A later local collector may append
 events for live viewing, but immutable offline snapshots remain the default.
 
-Implementation status: M0 through M6 are complete. M7 is next. Provider traces
+Implementation status: M0 through M7 are complete. M8 is next. Provider traces
 enter through `--trace <file>` as canonical JSON or JSONL events. Git inspection
 is read-only, and attribution is emitted only when an event explicitly targets a
 changed repository-relative path.
