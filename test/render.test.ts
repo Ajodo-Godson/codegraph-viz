@@ -119,3 +119,16 @@ test("explains evidence requirements and accepts committed change history defens
   assert.match(html, /Review status requires explicit test, commit, and review events/);
   assert.match(html, /No review evidence or changed files are available/);
 });
+
+test("supports clickable agent contributions and consistent filter navigation", () => {
+  const html = renderGraph(graphFixture(), { generatedAt: "2026-08-04T14:00:00Z" });
+
+  assert.match(html, /element\("button", undefined, "card agent-card"\)/);
+  assert.match(html, /function selectAgent/);
+  assert.match(html, /function showAgentDetails/);
+  assert.match(html, /function agentContributionPaths/);
+  assert.match(html, /URLSearchParams\(location\.hash\.slice\(1\)\)/);
+  assert.match(html, /addEventListener\("hashchange"/);
+  assert.match(html, /taskAgents/);
+  assert.match(html, /const reviewPaths = filtersActive\(\)/);
+});

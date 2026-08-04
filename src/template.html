@@ -84,6 +84,8 @@
     .view-summary { margin: 0 0 20px; color: var(--muted); }
     .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
     .card { min-width: 0; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow-wrap: anywhere; }
+    .agent-card { display: block; width: 100%; color: var(--text); text-align: left; }
+    .agent-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
     .card h3 { margin: 0 0 4px; font-size: 15px; }
     .card p { margin: 5px 0; }
     .badge-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
@@ -188,6 +190,7 @@
     const correlations = graph.correlations || [];
     const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
     const eventById = new Map(provenance.map((event) => [event.id, event]));
+    const contributionPathsByAgent = new Map();
     const activityFilters = {
       run: document.getElementById("run-filter"),
       agent: document.getElementById("agent-filter"),
@@ -275,10 +278,13 @@
     function filteredEvents() {
       const from = activityFilters.from.value ? new Date(activityFilters.from.value).valueOf() : -Infinity;
       const to = activityFilters.to.value ? new Date(activityFilters.to.value).valueOf() : Infinity;
+      const taskAgents = new Set(provenance.filter((event) =>
+        activityFilters.task.value && event.kind === "agent_spawned" && event.taskId === activityFilters.task.value
+      ).map((event) => event.agentId));
       const result = provenance.filter((event) =>
         (!activityFilters.run.value || event.runId === activityFilters.run.value) &&
         (!activityFilters.agent.value || event.agentId === activityFilters.agent.value) &&
-        (!activityFilters.task.value || event.taskId === activityFilters.task.value) &&
+        (!activityFilters.task.value || event.taskId === activityFilters.task.value || taskAgents.has(event.agentId)) &&
         (!activityFilters.provider.value || event.provider === activityFilters.provider.value) &&
         (!activityFilters.status.value || event.kind === activityFilters.status.value) &&
         new Date(event.timestamp).valueOf() >= from && new Date(event.timestamp).valueOf() <= to
@@ -320,6 +326,63 @@
       return event.target.path || event.target.symbolId || event.target.value || event.target.type;
     }
 
+    function agentContributionPaths(agentId) {
+      if (contributionPathsByAgent.has(agentId)) return contributionPathsByAgent.get(agentId);
+      const direct = provenance.filter((event) => event.agentId === agentId && event.target?.path).map((event) => event.target.path);
+      const attributed = correlations.filter((item) => item.agentIds.includes(agentId)).map((item) => item.path);
+      const paths = [...new Set([...direct, ...attributed])].sort();
+      contributionPathsByAgent.set(agentId, paths);
+      return paths;
+    }
+
+    function nodeForPath(path) {
+      return nodes.find((node) => node.path === path || (node.type === "directory" && node.id === directoryOf(path)));
+    }
+
+    function showAgentDetails(agentId) {
+      const events = provenance.filter((event) => event.agentId === agentId);
+      const paths = agentContributionPaths(agentId);
+      const tasks = [...new Set(events.map((event) => event.taskId).filter(Boolean))];
+      const knowledge = events.filter((event) => event.kind === "knowledge_reported");
+      clearPanel();
+      detailPanel.append(element("div", agentId, "title"));
+      detailPanel.append(element("div", "Agent contribution", "path"));
+      addFacts([["Events", events.length], ["Tasks", tasks.length], ["Files", paths.length], ["Knowledge reports", knowledge.length]]);
+      detailPanel.append(element("h2", `Contributed files (${paths.length})`));
+      if (paths.length === 0) detailPanel.append(element("p", "No file-targeted evidence was recorded for this agent.", "empty"));
+      for (const path of paths) {
+        const button = element("button", path, "item");
+        button.type = "button";
+        button.addEventListener("click", () => {
+          const node = nodeForPath(path);
+          setView("code");
+          if (node) showNode(node);
+        });
+        detailPanel.append(button);
+      }
+      detailPanel.append(element("h2", `Knowledge (${knowledge.length})`));
+      for (const event of knowledge.slice(0, 20)) detailPanel.append(element("p", event.summary || "Knowledge report", "path"));
+    }
+
+    function showDefaultDetails() {
+      clearPanel();
+      detailPanel.append(element("p", "Select a node or agent to inspect its contributions.", "empty"));
+    }
+
+    function writeAgentHash(agentId) {
+      const parameters = new URLSearchParams(location.hash.slice(1));
+      if (agentId) parameters.set("agent", agentId); else parameters.delete("agent");
+      const next = parameters.toString();
+      history.replaceState(null, "", next ? `#${next}` : location.pathname + location.search);
+    }
+
+    function selectAgent(agentId, updateHash = true) {
+      activityFilters.agent.value = agentId;
+      if (updateHash) writeAgentHash(agentId);
+      renderActiveView();
+      if (agentId) showAgentDetails(agentId); else showDefaultDetails();
+    }
+
     function renderAgentView(events) {
       const agents = new Map();
       for (const event of events) {
@@ -338,7 +401,11 @@
       const grid = element("div", undefined, "card-grid");
       const depth = (agent) => { let value = 0; let parent = agent.parent; const seen = new Set(); while (parent && agents.has(parent) && !seen.has(parent)) { seen.add(parent); value += 1; parent = agents.get(parent).parent; } return value; };
       for (const agent of [...agents.values()].sort((left, right) => depth(left) - depth(right) || left.id.localeCompare(right.id))) {
-        const card = element("article", undefined, "card");
+        const card = element("button", undefined, "card agent-card");
+        card.type = "button";
+        card.dataset.agentId = agent.id;
+        card.setAttribute("aria-pressed", String(activityFilters.agent.value === agent.id));
+        card.addEventListener("click", () => selectAgent(activityFilters.agent.value === agent.id ? "" : agent.id));
         card.style.borderLeftWidth = `${3 + Math.min(5, depth(agent))}px`;
         card.append(element("h3", agent.id));
         card.append(element("p", agent.parent ? `Parent: ${agent.parent}` : "Root agent", "path"));
@@ -433,7 +500,8 @@
       const workingChanges = gitSnapshot.changes || [];
       const committedChanges = (gitSnapshot.recentCommits || []).flatMap((commit) => commit.changes || commit.files || []);
       const changedPaths = [...new Set([...workingChanges, ...committedChanges].map((change) => typeof change === "string" ? change : change.path).filter(Boolean))];
-      const unattributed = changedPaths.filter((path) => !correlations.some((item) => item.path === path && item.agentIds.length));
+      const reviewPaths = filtersActive() ? visible.map((item) => item.path) : changedPaths;
+      const unattributed = reviewPaths.filter((path) => !correlations.some((item) => item.path === path && item.agentIds.length));
       const overlaps = visible.filter((item) => item.overlappingAgents);
       const untested = visible.filter((item) => item.states.modified && !item.states.tested);
       const unreviewed = visible.filter((item) => item.states.modified && !item.states.reviewed);
@@ -497,7 +565,13 @@
     for (const kind of edgeKinds) addFilter("edge-filters", kind, kind, null, enabledEdges);
     if (edgeKinds.length === 0) document.getElementById("edge-filters").append(element("p", "No visible edges", "empty"));
 
-    function nodeVisible(node) { return enabledLayers.has(node.layer); }
+    function nodeVisible(node) {
+      if (!enabledLayers.has(node.layer)) return false;
+      const agentId = activityFilters.agent.value;
+      if (!agentId) return true;
+      const paths = agentContributionPaths(agentId);
+      return paths.some((path) => node.path === path || (node.type === "directory" && node.id === directoryOf(path)));
+    }
     function linkVisible(link) { return enabledEdges.has(link.dominantKind) && nodeVisible(nodeById.get(link.source)) && nodeVisible(nodeById.get(link.target)); }
     function screen(node) { return { x: width / 2 + offsetX + node.x * scale, y: height / 2 + offsetY + node.y * scale }; }
 
@@ -738,11 +812,19 @@
     for (const tab of document.querySelectorAll(".view-tab")) {
       tab.addEventListener("click", () => setView(tab.dataset.view));
     }
-    for (const control of Object.values(activityFilters)) {
-      control.addEventListener("change", renderActiveView);
+    for (const [name, control] of Object.entries(activityFilters)) {
+      control.addEventListener("change", () => {
+        if (name === "agent") {
+          writeAgentHash(control.value);
+          if (control.value) showAgentDetails(control.value); else showDefaultDetails();
+        }
+        renderActiveView();
+      });
     }
     document.getElementById("clear-agent-filters").addEventListener("click", () => {
       for (const control of Object.values(activityFilters)) control.value = "";
+      writeAgentHash("");
+      showDefaultDetails();
       renderActiveView();
     });
     document.getElementById("controls-toggle").addEventListener("click", (event) => {
@@ -772,7 +854,16 @@
     }
     new ResizeObserver(resize).observe(canvas);
     resize();
-    filteredEvents();
+    function applyHashSelection() {
+      const agentId = new URLSearchParams(location.hash.slice(1)).get("agent") || "";
+      if (agentId && [...activityFilters.agent.options].some((option) => option.value === agentId)) {
+        activityFilters.agent.value = agentId;
+        showAgentDetails(agentId);
+      }
+      renderActiveView();
+    }
+    addEventListener("hashchange", applyHashSelection);
+    applyHashSelection();
     if (graph.report.pruned) document.querySelector("header .meta strong").classList.add("pruned");
     if (reducedMotion) { for (let index = 0; index < ticks; index += 1) simulate(); fitView(); draw(); } else requestAnimationFrame(frame);
   })();
