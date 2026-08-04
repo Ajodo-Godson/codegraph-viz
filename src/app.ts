@@ -3,6 +3,8 @@ import { access, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { extractGraph } from "./extract.ts";
+import { correlateChanges } from "./correlate.ts";
+import { inspectGit } from "./git.ts";
 import { prepareGraph, type PrepareGraphOptions, type PreparedGraph } from "./granularity.ts";
 import type { LayerConfiguration } from "./layers.ts";
 import { openCodeGraph } from "./open.ts";
@@ -68,6 +70,13 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
     if (options.tracePaths?.length) {
       graph.provenance = (await Promise.all(options.tracePaths.map((path) => readProvenanceFile(resolve(path))))).flat();
     }
+    try {
+      graph.git = inspectGit(projectPath);
+      graph.correlations = correlateChanges(graph.git, graph.provenance ?? [], payload.symbols);
+    } catch (error) {
+      opened.warnings.push(`Git inspection unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      graph.correlations = [];
+    }
     await writeAtomic(outputPath, renderGraph(graph, { generatedAt: options.generatedAt }), options.force ?? false);
     const hubs = [...graph.nodes].sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0) || a.id.localeCompare(b.id)).slice(0, 3);
     return {
@@ -80,6 +89,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
         `Level: ${graph.level}; showing ${graph.report.shownNodes} of ${graph.report.totalNodes} nodes`,
         `Links: showing ${graph.report.shownLinks} of ${graph.report.totalLinks}`,
         `Provenance events: ${graph.provenance?.length ?? 0}`,
+        `Git changes: ${graph.git?.changes.length ?? 0}; attributed: ${graph.correlations.filter((item) => item.agentIds.length).length}`,
         `Top hubs: ${hubs.map((node) => `${node.id} (${node.degree ?? 0})`).join(", ") || "none"}`,
         `Output: ${outputPath}`
       ]

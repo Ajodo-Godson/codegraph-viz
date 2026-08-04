@@ -93,3 +93,46 @@ export interface ProvenanceEvent {
   sourceRef: string;
   metadata: Record<string, unknown>;
 }
+
+export interface GitChange {
+  path: string;
+  indexStatus: string;
+  worktreeStatus: string;
+  staged: boolean;
+  unstaged: boolean;
+  additions: number | null;
+  deletions: number | null;
+}
+
+export interface GitCommit {
+  sha: string;
+  author: string;
+  timestamp: string;
+  subject: string;
+}
+
+export interface GitSnapshot {
+  root: string;
+  branch: string | null;
+  head: string | null;
+  changes: GitChange[];
+  recentCommits: GitCommit[];
+}
+
+export interface ChangeCorrelation {
+  path: string;
+  eventIds: string[];
+  agentIds: string[];
+  symbolIds: string[];
+  evidence: "explicit_event_target"[];
+  states: {
+    inspected: boolean;
+    proposed: boolean;
+    modified: boolean;
+    tested: boolean;
+    committed: boolean;
+    reviewed: boolean;
+    prOpened: boolean;
+  };
+  overlappingAgents: boolean;
+}
