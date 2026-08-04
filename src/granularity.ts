@@ -1,22 +1,63 @@
 import { basename } from "node:path";
 
-import { deriveLayers } from "./layers.js";
+import { deriveLayers } from "./layers.ts";
+import type { LayerConfiguration, LayerData } from "./layers.ts";
+import type { ExtractedGraph, GraphLink, GraphSymbol } from "./types.ts";
 
 export const DEFAULT_MAX_NODES = 400;
 export const FILE_LEVEL_LIMIT = 400;
 
-function directoryFor(path) {
+export interface PrepareGraphOptions {
+  level?: "auto" | "file" | "directory" | "symbol";
+  maxNodes?: number;
+  filterPaths?: string[];
+  layerConfig?: LayerConfiguration;
+}
+
+export interface PreparedNode {
+  id: string;
+  label: string;
+  path: string;
+  type: "file" | "directory" | "symbol";
+  layer: string;
+  language?: string | null;
+  size: number;
+  symbolCount: number;
+  fileCount: number;
+  errors?: string | null;
+  degree?: number;
+  [key: string]: unknown;
+}
+
+export interface PreparedGraph {
+  level: "file" | "directory" | "symbol";
+  nodes: PreparedNode[];
+  links: GraphLink[];
+  files: ExtractedGraph["files"];
+  symbols: GraphSymbol[];
+  layers: LayerData["layers"];
+  sourceStats: ExtractedGraph["stats"];
+  report: {
+    totalNodes: number; shownNodes: number; droppedNodes: number;
+    totalLinks: number; shownLinks: number; droppedLinks: number; pruned: boolean;
+  };
+}
+
+function directoryFor(path: string): string {
   const separator = path.indexOf("/");
   return separator === -1 ? "(root)" : path.slice(0, separator);
 }
 
-function dominantKind(kinds) {
+function dominantKind(kinds: Record<string, number>): string | null {
   return Object.entries(kinds).sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
   )[0]?.[0] ?? null;
 }
 
-function aggregateLinks(links, resolveNode) {
+function aggregateLinks(
+  links: GraphLink[],
+  resolveNode: (id: string) => string | null
+): GraphLink[] {
   const aggregated = new Map();
 
   for (const link of links) {
@@ -40,7 +81,7 @@ function aggregateLinks(links, resolveNode) {
     .sort((left, right) => left.source.localeCompare(right.source) || left.target.localeCompare(right.target));
 }
 
-function fileGraph(payload, layerData) {
+function fileGraph(payload: ExtractedGraph, layerData: LayerData) {
   const nodes = payload.files.map((file) => ({
     id: file.path,
     label: basename(file.path),
@@ -48,7 +89,7 @@ function fileGraph(payload, layerData) {
     type: "file",
     layer: layerData.byPath[file.path],
     language: file.language,
-    size: file.size,
+    size: file.size ?? 0,
     symbolCount: file.symbolCount,
     fileCount: 1,
     errors: file.errors
@@ -56,7 +97,7 @@ function fileGraph(payload, layerData) {
   return { nodes, links: payload.links.map((link) => ({ ...link, kinds: { ...link.kinds } })) };
 }
 
-function directoryGraph(payload, layerData) {
+function directoryGraph(payload: ExtractedGraph, layerData: LayerData) {
   const byDirectory = new Map();
   for (const file of payload.files) {
     const id = directoryFor(file.path);
@@ -76,7 +117,7 @@ function directoryGraph(payload, layerData) {
   return { nodes: [...byDirectory.values()], links };
 }
 
-function symbolGraph(payload, filterPaths, layerData) {
+function symbolGraph(payload: ExtractedGraph, filterPaths: string[], layerData: LayerData) {
   const matches = (path) => filterPaths.some((filter) => path === filter || path.startsWith(`${filter}/`));
   const symbols = payload.symbols.filter((symbol) => matches(symbol.filePath));
   const ids = new Set(symbols.map(({ id }) => id));
@@ -84,7 +125,7 @@ function symbolGraph(payload, filterPaths, layerData) {
     ...symbol,
     label: symbol.name,
     path: symbol.filePath,
-    type: "symbol",
+    type: "symbol" as const,
     layer: layerData.byPath[symbol.filePath],
     fileCount: 1,
     symbolCount: 1,
@@ -102,15 +143,15 @@ function symbolGraph(payload, filterPaths, layerData) {
   return { nodes, links };
 }
 
-function prune(graph, maxNodes) {
-  const degree = new Map(graph.nodes.map(({ id }) => [id, 0]));
+function prune(graph: { nodes: PreparedNode[]; links: GraphLink[] }, maxNodes: number) {
+  const degree = new Map<string, number>(graph.nodes.map(({ id }) => [id, 0]));
   for (const link of graph.links) {
     degree.set(link.source, (degree.get(link.source) ?? 0) + link.weight);
     degree.set(link.target, (degree.get(link.target) ?? 0) + link.weight);
   }
   const selected = new Set(
     [...graph.nodes]
-      .sort((left, right) => degree.get(right.id) - degree.get(left.id) || left.id.localeCompare(right.id))
+      .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0) || left.id.localeCompare(right.id))
       .slice(0, maxNodes)
       .map(({ id }) => id)
   );
@@ -123,7 +164,10 @@ function prune(graph, maxNodes) {
   return { nodes, links };
 }
 
-export function prepareGraph(payload, options = {}) {
+export function prepareGraph(
+  payload: ExtractedGraph,
+  options: PrepareGraphOptions = {}
+): PreparedGraph {
   const level = options.level ?? "auto";
   const selectedLevel = level === "auto"
     ? (payload.files.length <= FILE_LEVEL_LIMIT ? "file" : "directory")

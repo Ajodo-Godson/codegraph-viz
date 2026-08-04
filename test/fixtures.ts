@@ -3,11 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+interface FixtureOptions {
+  schemaVersion?: number;
+  indexState?: string;
+  populate?: (database: DatabaseSync) => void;
+}
+
 export async function createCodeGraphProject({
   schemaVersion = 8,
   indexState = "complete",
   populate
-} = {}) {
+}: FixtureOptions = {}) {
   const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-"));
   const indexPath = join(projectPath, ".codegraph");
   const databasePath = join(indexPath, "codegraph.db");
@@ -49,31 +55,42 @@ export async function createCodeGraphProject({
   return { projectPath, databasePath };
 }
 
-export function insertFile(database, {
+interface FileFixture {
+  path: string; language?: string; size?: number; indexedAt?: string;
+  nodeCount?: number; errors?: string | null;
+}
+
+export function insertFile(database: DatabaseSync, {
   path,
-  language = "JavaScript",
+  language = "TypeScript",
   size = 100,
   indexedAt = "2026-08-04T12:00:00Z",
   nodeCount = 0,
   errors = null
-}) {
+}: FileFixture) {
   database.prepare(`
     INSERT INTO files(path, language, size, indexed_at, node_count, errors)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(path, language, size, indexedAt, nodeCount, errors);
 }
 
-export function insertNode(database, {
+interface NodeFixture {
+  id: string; kind: string; name: string; filePath: string;
+  qualifiedName?: string | null; language?: string;
+  startLine?: number | null; endLine?: number | null; signature?: string | null;
+}
+
+export function insertNode(database: DatabaseSync, {
   id,
   kind,
   name,
   qualifiedName = null,
   filePath,
-  language = "JavaScript",
+  language = "TypeScript",
   startLine = null,
   endLine = null,
   signature = null
-}) {
+}: NodeFixture) {
   database.prepare(`
     INSERT INTO nodes(
       id, kind, name, qualified_name, file_path, language,
@@ -85,7 +102,7 @@ export function insertNode(database, {
   );
 }
 
-export function insertEdge(database, source, target, kind) {
+export function insertEdge(database: DatabaseSync, source: string, target: string, kind: string) {
   database.prepare(
     "INSERT INTO edges(source, target, kind) VALUES (?, ?, ?)"
   ).run(source, target, kind);

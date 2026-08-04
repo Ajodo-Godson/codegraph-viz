@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
+import type { PreparedGraph } from "./granularity.ts";
 
 const templatePath = new URL("./template.html", import.meta.url);
 const template = readFileSync(templatePath, "utf8");
 
-function escapeHtml(value) {
+function escapeHtml(value: unknown): string {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -12,14 +13,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function serializePayload(payload) {
+function serializePayload(payload: PreparedGraph): string {
   return JSON.stringify(payload)
     .replaceAll("<", "\\u003c")
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
 }
 
-function displayTimestamp(value) {
+function displayTimestamp(value: string | number | null): string {
   if (value === null || value === undefined) return "unknown";
   if (typeof value === "number" || /^\d{10,}$/.test(String(value))) {
     const date = new Date(Number(value));
@@ -28,7 +29,10 @@ function displayTimestamp(value) {
   return String(value);
 }
 
-export function renderGraph(graph, options = {}) {
+export function renderGraph(
+  graph: PreparedGraph,
+  options: { generatedAt?: string } = {}
+): string {
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const indexedAt = displayTimestamp(graph.sourceStats.newestIndexedAt);
   const nodeName = graph.level === "directory" ? "directory" : graph.level;

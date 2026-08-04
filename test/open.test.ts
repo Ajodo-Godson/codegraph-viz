@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { openCodeGraph } from "../src/open.js";
+import { openCodeGraph } from "../src/open.ts";
 
 async function createProject({ schemaVersion = 8, indexState = "complete" } = {}) {
   const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-"));
@@ -35,7 +35,7 @@ async function createProject({ schemaVersion = 8, indexState = "complete" } = {}
     "INSERT INTO project_metadata(key, value) VALUES ('index_state', ?)"
   ).run(indexState);
   database.prepare(
-    "INSERT INTO files(path, indexed_at) VALUES ('src/index.js', '2026-08-04T12:00:00Z')"
+    "INSERT INTO files(path, indexed_at) VALUES ('src/index.ts', '2026-08-04T12:00:00Z')"
   ).run();
   database.close();
 
@@ -73,6 +73,7 @@ test("names the missing database path", async () => {
   const expectedPath = join(projectPath, ".codegraph", "codegraph.db");
 
   assert.throws(() => openCodeGraph(projectPath), (error) => {
+    assert.ok(error instanceof Error);
     assert.match(error.message, /CodeGraph database not found/);
     assert.match(error.message, new RegExp(expectedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     return true;

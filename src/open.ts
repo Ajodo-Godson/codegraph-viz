@@ -1,10 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { OpenedCodeGraph } from "./types.ts";
 
 export const SUPPORTED_SCHEMA_VERSION = 8;
 
-function resolveDatabasePath(projectOrDatabasePath) {
+function resolveDatabasePath(projectOrDatabasePath: string): string {
   const inputPath = resolve(projectOrDatabasePath);
 
   if (inputPath.endsWith(".db")) {
@@ -14,7 +15,7 @@ function resolveDatabasePath(projectOrDatabasePath) {
   return join(inputPath, ".codegraph", "codegraph.db");
 }
 
-function readMetadata(database) {
+function readMetadata(database: DatabaseSync): Record<string, string> {
   const rows = database
     .prepare("SELECT key, value FROM project_metadata ORDER BY key")
     .all();
@@ -22,14 +23,14 @@ function readMetadata(database) {
   return Object.fromEntries(rows.map(({ key, value }) => [key, value]));
 }
 
-export function openCodeGraph(projectOrDatabasePath = process.cwd()) {
+export function openCodeGraph(projectOrDatabasePath = process.cwd()): OpenedCodeGraph {
   const databasePath = resolveDatabasePath(projectOrDatabasePath);
 
   if (!existsSync(databasePath) || !statSync(databasePath).isFile()) {
     throw new Error(`CodeGraph database not found at ${databasePath}`);
   }
 
-  let database;
+  let database: DatabaseSync | undefined;
 
   try {
     database = new DatabaseSync(databasePath, { readOnly: true });
@@ -48,10 +49,10 @@ export function openCodeGraph(projectOrDatabasePath = process.cwd()) {
     }
 
     const metadata = readMetadata(database);
-    const newestIndexedAt = database
+    const newestIndexedAt = (database
       .prepare("SELECT MAX(indexed_at) AS indexed_at FROM files")
-      .get()?.indexed_at ?? null;
-    const warnings = [];
+      .get()?.indexed_at as string | number | null | undefined) ?? null;
+    const warnings: string[] = [];
 
     if (metadata.index_state !== "complete") {
       warnings.push(
@@ -62,8 +63,9 @@ export function openCodeGraph(projectOrDatabasePath = process.cwd()) {
 
     let closed = false;
 
+    const openedDatabase = database;
     return {
-      database,
+      database: openedDatabase,
       path: databasePath,
       schemaVersion,
       metadata,
@@ -71,8 +73,8 @@ export function openCodeGraph(projectOrDatabasePath = process.cwd()) {
       warnings,
       close() {
         if (closed) return;
-        database.exec("ROLLBACK");
-        database.close();
+        openedDatabase.exec("ROLLBACK");
+        openedDatabase.close();
         closed = true;
       }
     };
@@ -90,7 +92,8 @@ export function openCodeGraph(projectOrDatabasePath = process.cwd()) {
       throw error;
     }
 
-    throw new Error(`Unable to open CodeGraph database at ${databasePath}: ${error.message}`, {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to open CodeGraph database at ${databasePath}: ${message}`, {
       cause: error
     });
   }

@@ -1,3 +1,5 @@
+import type { ExtractedGraph, GraphLink, OpenedCodeGraph } from "./types.ts";
+
 export const RELATED_SYMBOL_LIMIT = 10;
 
 function compareRelated(left, right) {
@@ -128,7 +130,7 @@ function extractSymbols(database) {
   });
 }
 
-function extractLinks(database) {
+function extractLinks(database): GraphLink[] {
   const rows = database.prepare(`
     SELECT
       source.file_path AS source,
@@ -147,7 +149,7 @@ function extractLinks(database) {
     GROUP BY source.file_path, target.file_path, edges.kind
     ORDER BY source.file_path, target.file_path, edges.kind
   `).all();
-  const links = [];
+  const links: Array<Omit<GraphLink, "dominantKind"> & { dominantKind: string | null }> = [];
 
   for (const row of rows) {
     let link = links.at(-1);
@@ -176,7 +178,10 @@ function extractLinks(database) {
     }
   }
 
-  return links;
+  return links.map((link) => ({
+    ...link,
+    dominantKind: link.dominantKind ?? "unknown"
+  }));
 }
 
 function extractSymbolLinks(database) {
@@ -199,13 +204,13 @@ function extractSymbolLinks(database) {
   }));
 }
 
-export function extractGraph(openedCodeGraph) {
+export function extractGraph(openedCodeGraph: OpenedCodeGraph): ExtractedGraph {
   const { database, newestIndexedAt } = openedCodeGraph;
   const files = extractFiles(database);
   const symbols = extractSymbols(database);
   const links = extractLinks(database);
   const symbolLinks = extractSymbolLinks(database);
-  const edgeKindCounts = {};
+  const edgeKindCounts: Record<string, number> = {};
 
   for (const link of links) {
     for (const [kind, count] of Object.entries(link.kinds)) {

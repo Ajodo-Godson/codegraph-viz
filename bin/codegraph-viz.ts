@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { openCodeGraph } from "../src/open.js";
-import { extractGraph } from "../src/extract.js";
+import { openCodeGraph } from "../src/open.ts";
+import { extractGraph } from "../src/extract.ts";
 
 const argumentsList = process.argv.slice(2);
 const json = argumentsList.includes("--json");
@@ -33,7 +33,7 @@ if (positional.length > 1) {
       console.log(`Newest indexed file: ${opened.newestIndexedAt ?? "unknown"}`);
     }
   } catch (error) {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
     opened?.close();

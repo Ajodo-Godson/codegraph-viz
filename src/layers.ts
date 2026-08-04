@@ -3,12 +3,23 @@ const PALETTE = [
   "#059669", "#0891b2", "#4f46e5", "#65a30d", "#64748b"
 ];
 
-function rawLayer(path) {
+export interface LayerConfiguration {
+  rename?: Record<string, string>;
+  merge?: Record<string, string>;
+  colors?: Record<string, string>;
+}
+
+export interface LayerData {
+  byPath: Record<string, string>;
+  layers: Array<{ id: string; label: string; fileCount: number; color: string }>;
+}
+
+function rawLayer(path: string) {
   const separator = path.indexOf("/");
   return separator === -1 ? "root" : path.slice(0, separator);
 }
 
-function validateRecord(value, name) {
+function validateRecord(value: Record<string, string> | undefined, name: string): Record<string, string> {
   if (value === undefined) return {};
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Layer configuration ${name} must be an object.`);
@@ -16,7 +27,10 @@ function validateRecord(value, name) {
   return value;
 }
 
-export function deriveLayers(files, configuration = {}) {
+export function deriveLayers(
+  files: Array<{ path: string }>,
+  configuration: LayerConfiguration = {}
+): LayerData {
   const rename = validateRecord(configuration.rename, "rename");
   const merge = validateRecord(configuration.merge, "merge");
   const colors = validateRecord(configuration.colors, "colors");
@@ -37,7 +51,7 @@ export function deriveLayers(files, configuration = {}) {
     .filter(([name]) => name !== "root")
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
   const retained = new Set(rankedDirectories.slice(0, 8).map(([name]) => name));
-  const byPath = {};
+  const byPath: Record<string, string> = {};
   const finalCounts = new Map();
 
   for (const file of files) {

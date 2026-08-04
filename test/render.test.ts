@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderGraph } from "../src/render.js";
+import { renderGraph } from "../src/render.ts";
+import type { PreparedGraph } from "../src/granularity.ts";
 
-function graphFixture() {
+function graphFixture(): PreparedGraph {
   return {
     level: "file",
     nodes: [{
-      id: "src/</script><img src=x>.js",
+      id: "src/</script><img src=x>.ts",
       label: "</script><img src=x>",
-      path: "src/</script><img src=x>.js",
+      path: "src/</script><img src=x>.ts",
       type: "file",
       layer: "src",
-      language: "JavaScript",
+      language: "TypeScript",
       size: 100,
       symbolCount: 1,
       fileCount: 1,
@@ -23,7 +24,7 @@ function graphFixture() {
     files: [],
     symbols: [{
       id: "danger", kind: "function", name: "<danger>",
-      qualifiedName: "<danger>", filePath: "src/</script><img src=x>.js",
+      qualifiedName: "<danger>", filePath: "src/</script><img src=x>.ts",
       startLine: 1, endLine: 2, signature: "danger()", degree: 0,
       callers: [], callees: [], callerCount: 0, calleeCount: 0
     }],

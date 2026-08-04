@@ -7,26 +7,26 @@ import {
   createCodeGraphProject,
   insertFile,
   insertNode
-} from "./fixtures.js";
+} from "./fixtures.ts";
 
 const execFileAsync = promisify(execFile);
 
 test("--json writes only a normalized payload to stdout", async () => {
   const fixture = await createCodeGraphProject({
     populate(database) {
-      insertFile(database, { path: "src/index.js", nodeCount: 1 });
+      insertFile(database, { path: "src/index.ts", nodeCount: 1 });
       insertNode(database, {
         id: "main",
         kind: "function",
         name: "main",
-        filePath: "src/index.js",
+        filePath: "src/index.ts",
         startLine: 1
       });
     }
   });
   const { stdout, stderr } = await execFileAsync(
     process.execPath,
-    ["bin/codegraph-viz.js", fixture.projectPath, "--json"],
+    ["bin/codegraph-viz.ts", fixture.projectPath, "--json"],
     { cwd: process.cwd() }
   );
   const payload = JSON.parse(stdout);

@@ -3,22 +3,26 @@
   "version": "1.0.0",
   "description": "Visualize CodeGraph indexes and multi-agent coding provenance",
   "bin": {
-    "codegraph-viz": "bin/codegraph-viz.js"
+    "codegraph-viz": "bin/codegraph-viz.ts"
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.6"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
-    "playwright": "^1.62.1"
+    "@types/node": "^26.1.2",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2"
   }
 }

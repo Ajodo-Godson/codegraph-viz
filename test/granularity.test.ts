@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { prepareGraph } from "../src/granularity.js";
+import { prepareGraph } from "../src/granularity.ts";
 
-function payload(files, links = [], symbols = []) {
+function payload(files: any[], links: any[] = [], symbols: any[] = []): any {
   return {
     files,
     links,
@@ -21,24 +21,24 @@ function payload(files, links = [], symbols = []) {
 
 const files = [
   { path: "README.md", language: "Markdown", size: 10, symbolCount: 0, errors: null },
-  { path: "src/a.js", language: "JavaScript", size: 20, symbolCount: 2, errors: null },
-  { path: "src/b.js", language: "JavaScript", size: 30, symbolCount: 1, errors: null },
-  { path: "test/a.test.js", language: "JavaScript", size: 40, symbolCount: 1, errors: null }
+  { path: "src/a.ts", language: "TypeScript", size: 20, symbolCount: 2, errors: null },
+  { path: "src/b.ts", language: "TypeScript", size: 30, symbolCount: 1, errors: null },
+  { path: "test/a.test.ts", language: "TypeScript", size: 40, symbolCount: 1, errors: null }
 ];
 
 const links = [
-  { source: "src/a.js", target: "src/b.js", weight: 3, dominantKind: "calls", kinds: { calls: 3 } },
-  { source: "src/b.js", target: "test/a.test.js", weight: 2, dominantKind: "imports", kinds: { imports: 2 } },
-  { source: "test/a.test.js", target: "src/a.js", weight: 1, dominantKind: "calls", kinds: { calls: 1 } }
+  { source: "src/a.ts", target: "src/b.ts", weight: 3, dominantKind: "calls", kinds: { calls: 3 } },
+  { source: "src/b.ts", target: "test/a.test.ts", weight: 2, dominantKind: "imports", kinds: { imports: 2 } },
+  { source: "test/a.test.ts", target: "src/a.ts", weight: 1, dominantKind: "calls", kinds: { calls: 1 } }
 ];
 
 test("auto selects file level at 400 files and directory level above it", () => {
   const small = payload(Array.from({ length: 400 }, (_, index) => ({
-    path: `src/file-${index}.js`, language: "JavaScript", size: 1,
+    path: `src/file-${index}.ts`, language: "TypeScript", size: 1,
     symbolCount: 0, errors: null
   })));
   const large = payload(Array.from({ length: 401 }, (_, index) => ({
-    path: `group-${index}/file.js`, language: "JavaScript", size: 1,
+    path: `group-${index}/file.ts`, language: "TypeScript", size: 1,
     symbolCount: 0, errors: null
   })));
 
@@ -70,7 +70,7 @@ test("aggregates files and directed links at directory level", () => {
 test("prunes by weighted degree with stable ID tie-breaking", () => {
   const graph = prepareGraph(payload(files, links), { level: "file", maxNodes: 2 });
 
-  assert.deepEqual(graph.nodes.map(({ id }) => id), ["src/a.js", "src/b.js"]);
+  assert.deepEqual(graph.nodes.map(({ id }) => id), ["src/a.ts", "src/b.ts"]);
   assert.deepEqual(graph.links, [links[0]]);
   assert.deepEqual(graph.report, {
     totalNodes: 4, shownNodes: 2, droppedNodes: 2,
@@ -88,9 +88,9 @@ test("symbol level requires an explicitly filtered subgraph", () => {
 
 test("symbol level uses complete call links inside the filtered subgraph", () => {
   const symbols = [
-    { id: "a", name: "a", filePath: "src/a.js", kind: "function", startLine: 1, endLine: 2 },
-    { id: "b", name: "b", filePath: "src/b.js", kind: "function", startLine: 1, endLine: 2 },
-    { id: "test", name: "test", filePath: "test/a.js", kind: "function", startLine: 1, endLine: 2 }
+    { id: "a", name: "a", filePath: "src/a.ts", kind: "function", startLine: 1, endLine: 2 },
+    { id: "b", name: "b", filePath: "src/b.ts", kind: "function", startLine: 1, endLine: 2 },
+    { id: "test", name: "test", filePath: "test/a.ts", kind: "function", startLine: 1, endLine: 2 }
   ];
   const input = payload(files, links, symbols);
   input.symbolLinks = [
