@@ -73,6 +73,26 @@ function parseArguments(value: unknown): JsonRecord {
   try { return record(JSON.parse(value)); } catch { return {}; }
 }
 
+function codexWrapperEvents(payload: JsonRecord, timestamp: string, runId: string, projectPath: string): JsonRecord[] {
+  const input = text(payload.input);
+  if (payload.name !== "exec" || !input) return [];
+  const id = text(payload.call_id) ?? text(payload.id) ?? `${runId}:wrapper`;
+  if (input.includes("apply_patch")) {
+    const paths = [...input.matchAll(/\*\*\* (?:Add|Update|Delete) File: ([^\\\n\r"]+)/g)]
+      .map((match) => projectRelative(match[1], projectPath)).filter((path): path is string => Boolean(path));
+    return [...new Set(paths)].map((path, index) => rawEvent({}, {
+      id: `${id}:${index}`, timestamp, runId, agentId: "root", kind: "file_edited",
+      target: { type: "file", path }, summary: "Edited a repository file"
+    }));
+  }
+  if (input.includes("exec_command")) {
+    const kind = commandKind(input);
+    return [rawEvent({}, { id, timestamp, runId, agentId: "root", kind, summary: kind === "test_run" ? "Ran repository tests" : "Executed a repository command" })];
+  }
+  if (input.includes("view_image")) return [rawEvent({}, { id, timestamp, runId, agentId: "root", kind: "file_read", summary: "Inspected a repository image" })];
+  return [];
+}
+
 export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sourceRef: string): ProvenanceEvent[] {
   const meta = records.find((item) => item.type === "session_meta");
   const metaPayload = record(meta?.payload);
@@ -86,11 +106,15 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
   for (const item of records) {
     if (item.type !== "response_item") continue;
     const payload = record(item.payload);
+    const timestamp = text(item.timestamp);
+    if (!timestamp) continue;
+    if (payload.type === "custom_tool_call") {
+      raw.push(...codexWrapperEvents(payload, timestamp, runId, projectPath));
+      continue;
+    }
     if (payload.type !== "function_call") continue;
     const name = text(payload.name) ?? "unknown";
     const args = parseArguments(payload.arguments);
-    const timestamp = text(item.timestamp);
-    if (!timestamp) continue;
     const id = text(payload.call_id) ?? `${runId}:${raw.length}`;
     if (["exec_command", "shell_command"].includes(name)) {
       const command = text(args.cmd) ?? text(args.command);

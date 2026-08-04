@@ -19,6 +19,24 @@ test("adapts native Codex records without importing prompts or output", async ()
   assert.doesNotMatch(JSON.stringify(events), /private/);
 });
 
+test("adapts current Codex exec wrappers without retaining patch source", async () => {
+  const project = await mkdtemp(join(tmpdir(), "codex-wrapper-project-"));
+  const privateSource = "PRIVATE_SOURCE_VALUE";
+  const records = [
+    { type: "session_meta", timestamp: "2026-08-04T12:00:00Z", payload: { id: "run", cwd: project } },
+    { type: "response_item", timestamp: "2026-08-04T12:01:00Z", payload: {
+      type: "custom_tool_call", name: "exec", call_id: "edit", input: `await tools.apply_patch(\"*** Begin Patch\\n*** Update File: ${join(project, "src/app.ts")}\\n@@\\n-${privateSource}\\n*** End Patch\")`
+    } },
+    { type: "response_item", timestamp: "2026-08-04T12:02:00Z", payload: {
+      type: "custom_tool_call", name: "exec", call_id: "command", input: "await tools.exec_command({cmd:\"npm test\"})"
+    } }
+  ];
+  const events = adaptCodexTrace(records, project, "codex:fixture");
+  assert.deepEqual(events.map(({ kind }) => kind), ["run_started", "file_edited", "test_run"]);
+  assert.equal(events[1]?.target?.path, "src/app.ts");
+  assert.doesNotMatch(JSON.stringify(events), new RegExp(privateSource));
+});
+
 test("adapts Claude tool use and ignores sessions for other projects", async () => {
   const project = await mkdtemp(join(tmpdir(), "claude-project-"));
   const records = [{
