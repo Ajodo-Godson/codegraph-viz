@@ -116,6 +116,7 @@ or ORM. `node:sqlite`, `node:test`, and `node:fs` cover the runtime.
 
 ```text
 bin/codegraph-viz.ts     CLI entry, argument parsing only
+bin/codegraph-viz-mcp.ts MCP stdio entry
 src/types.ts             shared graph and application contracts
 src/cli.ts               CLI option parsing and terminal behavior
 src/app.ts               shared extraction, preparation, and atomic generation
@@ -126,6 +127,7 @@ src/layers.ts            derives layer names and palette slots from paths
 src/render.ts            payload + template to one HTML string
 src/template.html        the page: inline CSS and JS, no external requests
 src/provenance.ts        normalized append-only agent event model and validation
+src/discovery.ts         native Codex and Claude trace discovery and adapters
 src/correlate.ts         joins provenance targets to CodeGraph files and symbols
 src/git.ts               read-only Git change, commit, and PR correlation
 src/mcp.ts               MCP server wrapping application functions (M8)
@@ -183,6 +185,12 @@ task, timestamp, action kind, target, summary, and source reference. Correlate
 file and symbol targets by repository-relative path and source location. Raw
 prompts and complete command output are excluded by default.
 
+**M5.1. Native trace discovery.** Discover matching Codex and Claude sessions
+from their local trace directories by default. Match sessions to the requested
+project, normalize supported tool events, deduplicate imports, and report scan
+diagnostics. `--provider` limits discovery and `--no-agent-traces` disables it.
+Explicit `--trace` files remain supported and are merged with discovered events.
+
 **M6. Git and change attribution.** Correlate agent edits with working-tree
 diffs, branches, commits, tests, and pull requests. Distinguish inspected,
 proposed, modified, tested, committed, reviewed, and merged states. Attribution
@@ -205,10 +213,11 @@ errors, zero external requests, zero horizontal overflow, and correct rendering
 in both themes and reduced-motion mode. A later local collector may append
 events for live viewing, but immutable offline snapshots remain the default.
 
-Implementation status: M0 through M6 are complete. M7 is next. Provider traces
-enter through `--trace <file>` as canonical JSON or JSONL events. Git inspection
-is read-only, and attribution is emitted only when an event explicitly targets a
-changed repository-relative path.
+Implementation status: M0 through M8 and M5.1 are complete. Provider traces are
+discovered automatically from local Codex and Claude sessions or imported with
+`--trace <file>` as canonical JSON or JSONL events. Git inspection is read-only,
+and attribution is emitted only when an event explicitly targets a changed
+repository-relative path. M9 verification is next.
 
 ## 6. Rules for the generated page
 

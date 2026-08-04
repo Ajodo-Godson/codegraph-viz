@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Visualize CodeGraph indexes and multi-agent coding provenance",
   "bin": {
-    "codegraph-viz": "bin/codegraph-viz.ts"
+    "codegraph-viz": "bin/codegraph-viz.ts",
+    "codegraph-viz-mcp": "bin/codegraph-viz-mcp.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

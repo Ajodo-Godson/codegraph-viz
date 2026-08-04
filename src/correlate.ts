@@ -3,6 +3,7 @@ import type {
 } from "./types.ts";
 
 const AUTHORING_KINDS = new Set(["edit_proposed", "file_edited"]);
+const RUN_EVIDENCE_KINDS = new Set(["test_run", "commit_created", "pr_opened", "review_received"]);
 
 function metadataPaths(event: ProvenanceEvent): string[] {
   const paths = event.metadata.paths;
@@ -42,25 +43,43 @@ export function correlateChanges(
     }
   }
 
-  return snapshot.changes.map((change) => {
-    const related = (eventsByPath.get(change.path) ?? []).filter((event) => appliesToPath(event, change.path));
-    const authoring = related.filter((event) => AUTHORING_KINDS.has(event.kind));
+  const commitsByPath = new Map<string, string[]>();
+  for (const commit of snapshot.recentCommits) {
+    for (const change of commit.changes) {
+      const shas = commitsByPath.get(change.path) ?? [];
+      shas.push(commit.sha);
+      commitsByPath.set(change.path, shas);
+    }
+  }
+  const paths = [...new Set([...snapshot.changes.map((change) => change.path), ...commitsByPath.keys()])].sort();
+  const workingPaths = new Set(snapshot.changes.map((change) => change.path));
+
+  return paths.map((path) => {
+    const targeted = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
+    const authoring = targeted.filter((event) => AUTHORING_KINDS.has(event.kind));
+    const authoringRuns = new Set(authoring.map((event) => event.runId));
+    const runEvidence = events.filter((event) => authoringRuns.has(event.runId) && RUN_EVIDENCE_KINDS.has(event.kind));
+    const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
-    const fileSymbols = symbolsByPath.get(change.path) ?? [];
+    const fileSymbols = symbolsByPath.get(path) ?? [];
     const symbolIds = [...new Set(related.flatMap((event) => fileSymbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();
     const kinds = new Set(related.map((event) => event.kind));
     return {
-      path: change.path,
+      path,
+      commitShas: commitsByPath.get(path) ?? [],
       eventIds: related.map((event) => event.id).sort(),
       agentIds,
       symbolIds,
-      evidence: related.length ? ["explicit_event_target"] : [],
+      evidence: [
+        ...(related.length ? ["explicit_event_target" as const] : []),
+        ...(commitsByPath.has(path) ? ["commit_membership" as const] : [])
+      ],
       states: {
         inspected: kinds.has("file_read") || kinds.has("symbol_inspected"),
         proposed: kinds.has("edit_proposed"),
         modified: kinds.has("file_edited"),
         tested: kinds.has("test_run"),
-        committed: kinds.has("commit_created"),
+        committed: !workingPaths.has(path) && (kinds.has("commit_created") || commitsByPath.has(path)),
         reviewed: kinds.has("review_received"),
         prOpened: kinds.has("pr_opened")
       },

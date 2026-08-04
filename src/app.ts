@@ -4,13 +4,14 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { extractGraph } from "./extract.ts";
 import { correlateChanges } from "./correlate.ts";
+import { discoverAgentTraces } from "./discovery.ts";
 import { inspectGit } from "./git.ts";
 import { prepareGraph, type PrepareGraphOptions, type PreparedGraph } from "./granularity.ts";
 import type { LayerConfiguration } from "./layers.ts";
 import { openCodeGraph } from "./open.ts";
 import { readProvenanceFile } from "./provenance.ts";
 import { renderGraph } from "./render.ts";
-import type { ExtractedGraph } from "./types.ts";
+import type { ExtractedGraph, TraceProvider } from "./types.ts";
 
 export interface GenerateOptions extends PrepareGraphOptions {
   projectPath?: string;
@@ -18,6 +19,9 @@ export interface GenerateOptions extends PrepareGraphOptions {
   force?: boolean;
   generatedAt?: string;
   tracePaths?: string[];
+  autoTraces?: boolean;
+  providers?: TraceProvider[];
+  traceRoots?: Partial<Record<TraceProvider, string>>;
 }
 
 export interface GenerationResult {
@@ -67,9 +71,16 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
     const payload = extractGraph(opened);
     const layerConfig = options.layerConfig ?? await loadLayerConfiguration(projectPath);
     const graph = prepareGraph(payload, { ...options, layerConfig });
-    if (options.tracePaths?.length) {
-      graph.provenance = (await Promise.all(options.tracePaths.map((path) => readProvenanceFile(resolve(path))))).flat();
-    }
+    const discovered = options.autoTraces === false
+      ? { events: [], diagnostics: [] }
+      : await discoverAgentTraces({ projectPath, providers: options.providers, roots: options.traceRoots });
+    const explicit = options.tracePaths?.length
+      ? (await Promise.all(options.tracePaths.map((path) => readProvenanceFile(resolve(path))))).flat()
+      : [];
+    graph.provenance = [...new Map([...discovered.events, ...explicit].map((event) => [`${event.provider}\0${event.id}`, event])).values()]
+      .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    graph.traceDiagnostics = discovered.diagnostics;
+    for (const diagnostic of discovered.diagnostics) opened.warnings.push(...diagnostic.warnings);
     try {
       graph.git = inspectGit(projectPath);
       graph.correlations = correlateChanges(graph.git, graph.provenance ?? [], payload.symbols);
@@ -89,6 +100,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
         `Level: ${graph.level}; showing ${graph.report.shownNodes} of ${graph.report.totalNodes} nodes`,
         `Links: showing ${graph.report.shownLinks} of ${graph.report.totalLinks}`,
         `Provenance events: ${graph.provenance?.length ?? 0}`,
+        `Agent traces: ${graph.traceDiagnostics?.map((item) => `${item.provider} ${item.sessionsMatched} sessions/${item.eventsImported} events`).join("; ") || "automatic discovery disabled"}`,
         `Git changes: ${graph.git?.changes.length ?? 0}; attributed: ${graph.correlations.filter((item) => item.agentIds.length).length}`,
         `Top hubs: ${hubs.map((node) => `${node.id} (${node.degree ?? 0})`).join(", ") || "none"}`,
         `Output: ${outputPath}`

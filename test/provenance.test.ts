@@ -49,6 +49,17 @@ test("preserves per-event providers in arrays and redacts free-form targets", ()
   assert.equal(events[1]?.target?.value, "used [REDACTED]");
 });
 
+test("orders timestamp ties deterministically without reordering events inside a run", () => {
+  const events = normalizeProvenance([
+    { id: "second-in-run", timestamp: "2026-08-04T12:00:00Z", runId: "run-b", kind: "file_read" },
+    { id: "first-in-run", timestamp: "2026-08-04T12:00:00Z", runId: "run-b", kind: "file_edited" },
+    { id: "other-run", timestamp: "2026-08-04T12:00:00Z", runId: "run-a", kind: "file_read" },
+    { id: "finish", timestamp: "2026-08-04T12:00:00Z", runId: "run-a", kind: "run_finished" },
+    { id: "start", timestamp: "2026-08-04T12:00:00Z", runId: "run-b", kind: "run_started" }
+  ]);
+  assert.deepEqual(events.map(({ id }) => id), ["start", "other-run", "second-in-run", "first-in-run", "finish"]);
+});
+
 test("rejects absolute targets and invalid timestamps", () => {
   assert.throws(() => normalizeProvenance([{ timestamp: "bad", runId: "run" }]), /valid timestamp/);
   assert.throws(() => normalizeProvenance([{ timestamp: "2026-08-04T12:00:00Z", runId: "run", target: "/secret" }]), /repository-relative/);

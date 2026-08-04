@@ -94,6 +94,17 @@ export interface ProvenanceEvent {
   metadata: Record<string, unknown>;
 }
 
+export type TraceProvider = "codex" | "claude";
+
+export interface TraceDiscoveryDiagnostic {
+  provider: TraceProvider;
+  filesScanned: number;
+  sessionsMatched: number;
+  eventsImported: number;
+  skippedFiles: number;
+  warnings: string[];
+}
+
 export interface GitChange {
   path: string;
   indexStatus: string;
@@ -109,6 +120,13 @@ export interface GitCommit {
   author: string;
   timestamp: string;
   subject: string;
+  changes: GitCommitChange[];
+}
+
+export interface GitCommitChange {
+  path: string;
+  additions: number | null;
+  deletions: number | null;
 }
 
 export interface GitSnapshot {
@@ -121,10 +139,11 @@ export interface GitSnapshot {
 
 export interface ChangeCorrelation {
   path: string;
+  commitShas: string[];
   eventIds: string[];
   agentIds: string[];
   symbolIds: string[];
-  evidence: "explicit_event_target"[];
+  evidence: ("explicit_event_target" | "commit_membership")[];
   states: {
     inspected: boolean;
     proposed: boolean;

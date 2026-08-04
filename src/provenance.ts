@@ -68,7 +68,7 @@ export function normalizeProvenance(input: unknown, options: NormalizeProvenance
   const envelopeProvider = options.provider ?? text(envelope.provider);
   const sourceRef = options.sourceRef ?? text(envelope.sourceRef) ?? "inline";
 
-  return rawEvents.map((value, index) => {
+  const normalized = rawEvents.map((value, index) => {
     const raw = record(value);
     const provider = envelopeProvider ?? text(raw.provider) ?? "generic";
     const timestampValue = text(raw.timestamp) ?? text(raw.created_at);
@@ -82,7 +82,7 @@ export function normalizeProvenance(input: unknown, options: NormalizeProvenance
     const agentId = text(raw.agentId) ?? text(raw.agent_id) ?? "root";
     const metadata = redact(record(raw.metadata)) as Record<string, unknown>;
     const summary = text(redact(raw.summary));
-    return {
+    const event: ProvenanceEvent = {
       id: text(raw.id) ?? `${provider}:${runId}:${index}`,
       timestamp: new Date(timestampValue).toISOString(),
       provider,
@@ -97,7 +97,17 @@ export function normalizeProvenance(input: unknown, options: NormalizeProvenance
       sourceRef: text(raw.sourceRef) ?? sourceRef,
       metadata
     };
-  }).sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
+    return { event, sourceOrder: index };
+  }).sort((left, right) => {
+    const time = left.event.timestamp.localeCompare(right.event.timestamp);
+    if (time) return time;
+    const priority = (kind: string) => kind === "run_started" ? -1 : kind === "run_finished" ? 1 : 0;
+    const priorityDifference = priority(left.event.kind) - priority(right.event.kind);
+    if (priorityDifference) return priorityDifference;
+    const run = left.event.runId.localeCompare(right.event.runId);
+    return run || left.sourceOrder - right.sourceOrder;
+  });
+  return normalized.map(({ event }) => event);
 }
 
 export async function readProvenanceFile(path: string, provider?: string): Promise<ProvenanceEvent[]> {
