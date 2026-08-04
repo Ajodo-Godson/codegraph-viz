@@ -3,6 +3,7 @@ import type {
 } from "./types.ts";
 
 const AUTHORING_KINDS = new Set(["edit_proposed", "file_edited"]);
+const RUN_EVIDENCE_KINDS = new Set(["test_run", "commit_created", "pr_opened", "review_received"]);
 
 function metadataPaths(event: ProvenanceEvent): string[] {
   const paths = event.metadata.paths;
@@ -53,8 +54,11 @@ export function correlateChanges(
   const paths = [...new Set([...snapshot.changes.map((change) => change.path), ...commitsByPath.keys()])].sort();
 
   return paths.map((path) => {
-    const related = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
-    const authoring = related.filter((event) => AUTHORING_KINDS.has(event.kind));
+    const targeted = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
+    const authoring = targeted.filter((event) => AUTHORING_KINDS.has(event.kind));
+    const authoringRuns = new Set(authoring.map((event) => event.runId));
+    const runEvidence = events.filter((event) => authoringRuns.has(event.runId) && RUN_EVIDENCE_KINDS.has(event.kind));
+    const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
     const fileSymbols = symbolsByPath.get(path) ?? [];
     const symbolIds = [...new Set(related.flatMap((event) => fileSymbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();

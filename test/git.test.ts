@@ -92,6 +92,21 @@ test("correlates clean-tree paths with factual commit membership", async () => {
   assert.deepEqual(app?.evidence, ["explicit_event_target", "commit_membership"]);
 });
 
+test("applies explicit run-level delivery evidence to files authored in that run", async () => {
+  const path = await repository();
+  const events = normalizeProvenance([
+    { timestamp: "2026-08-04T12:00:00Z", runId: "run-a", id: "edit", agentId: "agent-a", kind: "file_edited", target: "app.ts" },
+    { timestamp: "2026-08-04T12:01:00Z", runId: "run-a", id: "test", agentId: "agent-a", kind: "test_run" },
+    { timestamp: "2026-08-04T12:02:00Z", runId: "run-a", id: "review", agentId: "agent-a", kind: "review_received", target: { type: "pull_request", value: "12" } },
+    { timestamp: "2026-08-04T12:03:00Z", runId: "run-b", id: "other-test", agentId: "agent-b", kind: "test_run" }
+  ]);
+  const app = correlateChanges(inspectGit(path), events, []).find((item) => item.path === "app.ts");
+  assert.equal(app?.states.tested, true);
+  assert.equal(app?.states.reviewed, true);
+  assert.ok(app?.eventIds.includes("test"));
+  assert.ok(!app?.eventIds.includes("other-test"));
+});
+
 test("preserves unusual and renamed paths with NUL-delimited Git output", async () => {
   const path = await repository();
   const unusual = 'odd -> "name".ts';
