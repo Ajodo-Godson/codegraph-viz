@@ -60,3 +60,18 @@ test("attributes changes only from explicit evidence and detects overlaps", asyn
   assert.deepEqual(added?.agentIds, []);
   assert.deepEqual(added?.evidence, []);
 });
+
+test("preserves unusual and renamed paths with NUL-delimited Git output", async () => {
+  const path = await repository();
+  const unusual = 'odd -> "name".ts';
+  await writeFile(join(path, unusual), "export const odd = 1;\n");
+  git(path, "add", "--", unusual);
+  git(path, "commit", "-m", "add unusual path");
+  await writeFile(join(path, unusual), "export const odd = 2;\n");
+  git(path, "mv", "--", "app.ts", "renamed app.ts");
+
+  const snapshot = inspectGit(path);
+  assert.deepEqual(snapshot.changes.map(({ path }) => path), ["new.ts", unusual, "renamed app.ts"]);
+  assert.equal(snapshot.changes.find((change) => change.path === unusual)?.additions, 1);
+  assert.equal(snapshot.changes.find((change) => change.path === "renamed app.ts")?.indexStatus, "R");
+});

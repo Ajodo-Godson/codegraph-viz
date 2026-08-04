@@ -15,9 +15,17 @@ function git(cwd: string, args: string[], allowFailure = false, trimStart = true
 
 function parseNumstat(output: string): Map<string, { additions: number | null; deletions: number | null }> {
   const result = new Map<string, { additions: number | null; deletions: number | null }>();
-  for (const line of output.split("\n").filter(Boolean)) {
-    const [added, deleted, ...pathParts] = line.split("\t");
-    const path = pathParts.join("\t");
+  const entries = output.split("\0");
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    const [added = "-", deleted = "-", ...pathParts] = entry.split("\t");
+    let path = pathParts.join("\t");
+    if (!path) {
+      index += 2;
+      path = entries[index] ?? "";
+    }
+    if (!path) continue;
     result.set(path, {
       additions: added === "-" ? null : Number(added),
       deletions: deleted === "-" ? null : Number(deleted)
@@ -27,13 +35,19 @@ function parseNumstat(output: string): Map<string, { additions: number | null; d
 }
 
 function parseChanges(status: string, numstat: Map<string, { additions: number | null; deletions: number | null }>): GitChange[] {
-  return status.split("\n").filter(Boolean).map((line) => {
-    const indexStatus = line[0] ?? " ";
-    const worktreeStatus = line[1] ?? " ";
-    const rawPath = line.slice(3);
-    const path = rawPath.includes(" -> ") ? rawPath.split(" -> ").at(-1)! : rawPath;
+  const changes: GitChange[] = [];
+  const entries = status.split("\0");
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    const indexStatus = entry[0] ?? " ";
+    const worktreeStatus = entry[1] ?? " ";
+    const path = entry.slice(3);
+    if (indexStatus === "R" || indexStatus === "C" || worktreeStatus === "R" || worktreeStatus === "C") {
+      index += 1;
+    }
     const counts = numstat.get(path);
-    return {
+    changes.push({
       path,
       indexStatus,
       worktreeStatus,
@@ -41,8 +55,9 @@ function parseChanges(status: string, numstat: Map<string, { additions: number |
       unstaged: worktreeStatus !== " " || indexStatus === "?",
       additions: counts?.additions ?? null,
       deletions: counts?.deletions ?? null
-    };
-  }).sort((left, right) => left.path.localeCompare(right.path));
+    });
+  }
+  return changes.sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function parseCommits(output: string): GitCommit[] {
@@ -56,8 +71,8 @@ export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
   const root = git(projectPath, ["rev-parse", "--show-toplevel"]);
   const branch = git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], true) || null;
   const head = git(root, ["rev-parse", "--verify", "HEAD"], true) || null;
-  const status = git(root, ["status", "--porcelain=v1", "--untracked-files=all"], false, false);
-  const numstat = git(root, ["diff", "--numstat", "HEAD"], true);
+  const status = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], false, false);
+  const numstat = git(root, ["diff", "--numstat", "-z", "HEAD"], true, false);
   const log = git(root, ["log", `-${commitLimit}`, "--format=%H%x00%an%x00%aI%x00%s%x1e"], true);
   return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), recentCommits: parseCommits(log) };
 }
