@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-import type { GitChange, GitCommit, GitSnapshot } from "./types.ts";
+import type { GitChange, GitCommit, GitCommitChange, GitSnapshot } from "./types.ts";
 
 function git(cwd: string, args: string[], allowFailure = false, trimStart = true): string {
   try {
@@ -60,11 +60,17 @@ function parseChanges(status: string, numstat: Map<string, { additions: number |
   return changes.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function parseCommits(output: string): GitCommit[] {
+function parseCommits(output: string): Omit<GitCommit, "changes">[] {
   return output.split("\x1e").map((record) => record.trim()).filter(Boolean).map((record) => {
     const [sha = "", author = "", timestamp = "", subject = ""] = record.split("\0");
     return { sha, author, timestamp, subject };
   });
+}
+
+function commitChanges(root: string, sha: string): GitCommitChange[] {
+  const output = git(root, ["show", "--format=", "--numstat", "-z", "--find-renames", sha], true, false);
+  return [...parseNumstat(output)].map(([path, counts]) => ({ path, ...counts }))
+    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
@@ -74,5 +80,9 @@ export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
   const status = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], false, false);
   const numstat = git(root, ["diff", "--numstat", "-z", "HEAD"], true, false);
   const log = git(root, ["log", `-${commitLimit}`, "--format=%H%x00%an%x00%aI%x00%s%x1e"], true);
-  return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), recentCommits: parseCommits(log) };
+  const recentCommits = parseCommits(log).map((commit) => ({
+    ...commit,
+    changes: commitChanges(root, commit.sha)
+  }));
+  return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), recentCommits };
 }

@@ -39,6 +39,23 @@ test("inspects working tree and commits without changing Git state", async () =>
   assert.equal(before, after);
 });
 
+test("retains changed-file evidence for recent commits after the working tree is clean", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "update application");
+
+  const snapshot = inspectGit(path);
+  assert.deepEqual(snapshot.changes, []);
+  assert.equal(snapshot.recentCommits[0]?.subject, "update application");
+  assert.deepEqual(snapshot.recentCommits[0]?.changes, [
+    { path: "app.ts", additions: 1, deletions: 1 },
+    { path: "new.ts", additions: 1, deletions: 0 }
+  ]);
+  assert.deepEqual(snapshot.recentCommits[1]?.changes, [
+    { path: "app.ts", additions: 1, deletions: 0 }
+  ]);
+});
+
 test("attributes changes only from explicit evidence and detects overlaps", async () => {
   const path = await repository();
   const events = normalizeProvenance([
@@ -59,6 +76,20 @@ test("attributes changes only from explicit evidence and detects overlaps", asyn
   assert.deepEqual(app?.symbolIds, ["value"]);
   assert.deepEqual(added?.agentIds, []);
   assert.deepEqual(added?.evidence, []);
+});
+
+test("correlates clean-tree paths with factual commit membership", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "commit agent work");
+  const events = normalizeProvenance([
+    { timestamp: "2026-08-04T12:00:00Z", runId: "run", id: "edit", agentId: "agent-a", kind: "file_edited", target: "app.ts" }
+  ]);
+  const app = correlateChanges(inspectGit(path), events, []).find((item) => item.path === "app.ts");
+  assert.deepEqual(app?.agentIds, ["agent-a"]);
+  assert.equal(app?.states.committed, true);
+  assert.ok(app?.commitShas.length);
+  assert.deepEqual(app?.evidence, ["explicit_event_target", "commit_membership"]);
 });
 
 test("preserves unusual and renamed paths with NUL-delimited Git output", async () => {

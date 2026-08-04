@@ -120,6 +120,13 @@ export interface GitCommit {
   author: string;
   timestamp: string;
   subject: string;
+  changes: GitCommitChange[];
+}
+
+export interface GitCommitChange {
+  path: string;
+  additions: number | null;
+  deletions: number | null;
 }
 
 export interface GitSnapshot {
@@ -132,10 +139,11 @@ export interface GitSnapshot {
 
 export interface ChangeCorrelation {
   path: string;
+  commitShas: string[];
   eventIds: string[];
   agentIds: string[];
   symbolIds: string[];
-  evidence: "explicit_event_target"[];
+  evidence: ("explicit_event_target" | "commit_membership")[];
   states: {
     inspected: boolean;
     proposed: boolean;
