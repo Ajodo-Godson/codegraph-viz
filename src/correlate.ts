@@ -26,11 +26,28 @@ export function correlateChanges(
   events: ProvenanceEvent[],
   symbols: GraphSymbol[]
 ): ChangeCorrelation[] {
+  const symbolsByPath = new Map<string, GraphSymbol[]>();
+  for (const symbol of symbols) {
+    const entries = symbolsByPath.get(symbol.filePath) ?? [];
+    entries.push(symbol);
+    symbolsByPath.set(symbol.filePath, entries);
+  }
+  const eventsByPath = new Map<string, ProvenanceEvent[]>();
+  for (const event of events) {
+    const paths = new Set([event.target?.path, ...metadataPaths(event)].filter((path): path is string => Boolean(path)));
+    for (const path of paths) {
+      const entries = eventsByPath.get(path) ?? [];
+      entries.push(event);
+      eventsByPath.set(path, entries);
+    }
+  }
+
   return snapshot.changes.map((change) => {
-    const related = events.filter((event) => appliesToPath(event, change.path));
+    const related = (eventsByPath.get(change.path) ?? []).filter((event) => appliesToPath(event, change.path));
     const authoring = related.filter((event) => AUTHORING_KINDS.has(event.kind));
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
-    const symbolIds = [...new Set(related.flatMap((event) => symbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();
+    const fileSymbols = symbolsByPath.get(change.path) ?? [];
+    const symbolIds = [...new Set(related.flatMap((event) => fileSymbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();
     const kinds = new Set(related.map((event) => event.kind));
     return {
       path: change.path,
