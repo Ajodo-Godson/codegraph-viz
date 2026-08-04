@@ -114,6 +114,33 @@ function codexWrapperEvents(payload: JsonRecord, timestamp: string, runId: strin
   return [];
 }
 
+function reconcileCodexAgentIds(events: JsonRecord[]): JsonRecord[] {
+  const candidates = new Map<string, Set<string>>();
+  for (const event of events) {
+    const agentId = text(event.agentId);
+    if (!agentId?.startsWith("/root/")) continue;
+    const short = agentId.slice(agentId.lastIndexOf("/") + 1);
+    const values = candidates.get(short) ?? new Set<string>();
+    values.add(agentId);
+    candidates.set(short, values);
+  }
+  const canonical = new Map([...candidates].flatMap(([short, values]) => values.size === 1 ? [[short, [...values][0]!] as const] : []));
+  const normalize = (value: unknown): unknown => {
+    const agentId = text(value);
+    if (agentId === "/root") return "root";
+    return agentId ? canonical.get(agentId) ?? agentId : value;
+  };
+  return events.map((event) => {
+    const taskId = text(event.taskId);
+    const spawnedCanonical = event.kind === "agent_spawned" && taskId ? canonical.get(taskId) : null;
+    return {
+      ...event,
+      agentId: spawnedCanonical ?? normalize(event.agentId),
+      parentAgentId: normalize(event.parentAgentId)
+    };
+  });
+}
+
 export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sourceRef: string): ProvenanceEvent[] {
   const meta = records.find((item) => item.type === "session_meta");
   const metaPayload = record(meta?.payload);
@@ -174,7 +201,7 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
   }
   const completed = [...records].reverse().find((item) => item.type === "event_msg" && record(item.payload).type === "task_complete");
   if (completed?.timestamp) raw.push(rawEvent({}, { id: `${runId}:finish`, timestamp: completed.timestamp, runId, agentId: "root", kind: "run_finished", summary: "Codex session completed" }));
-  return normalizeProvenance(raw, { provider: "codex", sourceRef });
+  return normalizeProvenance(reconcileCodexAgentIds(raw), { provider: "codex", sourceRef });
 }
 
 export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sourceRef: string): ProvenanceEvent[] {

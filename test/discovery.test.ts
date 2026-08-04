@@ -36,6 +36,19 @@ test("adapts Codex agent reports and explicit delivery events without retaining 
   assert.doesNotMatch(JSON.stringify(events), /PRIVATE/);
 });
 
+test("reconciles Codex short task names with canonical agent paths", async () => {
+  const project = await mkdtemp(join(tmpdir(), "codex-agent-identity-"));
+  const records = [
+    { type: "session_meta", timestamp: "2026-08-04T12:00:00Z", payload: { id: "run", cwd: project } },
+    { type: "response_item", timestamp: "2026-08-04T12:01:00Z", payload: { type: "function_call", name: "spawn_agent", call_id: "spawn", arguments: JSON.stringify({ task_name: "audit", message: "private" }) } },
+    { type: "response_item", timestamp: "2026-08-04T12:02:00Z", payload: { type: "agent_message", id: "root-report", author: "/root", content: "private" } },
+    { type: "response_item", timestamp: "2026-08-04T12:03:00Z", payload: { type: "agent_message", id: "child-report", author: "/root/audit", content: "private" } }
+  ];
+  const events = adaptCodexTrace(records, project, "codex:fixture");
+  assert.deepEqual([...new Set(events.map(({ agentId }) => agentId))], ["root", "/root/audit"]);
+  assert.equal(events.find(({ kind }) => kind === "agent_spawned")?.agentId, "/root/audit");
+});
+
 test("adapts explicit Codex commit, pull request, and received-review tool evidence", async () => {
   const project = await mkdtemp(join(tmpdir(), "codex-delivery-project-"));
   const records = [
