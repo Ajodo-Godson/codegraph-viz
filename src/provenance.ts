@@ -97,7 +97,12 @@ export function normalizeProvenance(input: unknown, options: NormalizeProvenance
       sourceRef: text(raw.sourceRef) ?? sourceRef,
       metadata
     };
-  }).sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
+  }).sort((left, right) => {
+    const time = left.timestamp.localeCompare(right.timestamp);
+    if (time) return time;
+    const priority = (kind: string) => kind === "run_started" ? -1 : kind === "run_finished" ? 1 : 0;
+      return priority(left.kind) - priority(right.kind);
+  });
 }
 
 export async function readProvenanceFile(path: string, provider?: string): Promise<ProvenanceEvent[]> {

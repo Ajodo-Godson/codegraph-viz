@@ -94,6 +94,17 @@ export interface ProvenanceEvent {
   metadata: Record<string, unknown>;
 }
 
+export type TraceProvider = "codex" | "claude";
+
+export interface TraceDiscoveryDiagnostic {
+  provider: TraceProvider;
+  filesScanned: number;
+  sessionsMatched: number;
+  eventsImported: number;
+  skippedFiles: number;
+  warnings: string[];
+}
+
 export interface GitChange {
   path: string;
   indexStatus: string;
