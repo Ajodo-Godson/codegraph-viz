@@ -73,6 +73,27 @@ function parseArguments(value: unknown): JsonRecord {
   try { return record(JSON.parse(value)); } catch { return {}; }
 }
 
+function identifier(value: unknown): string | null {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : text(value);
+}
+
+function deliveryEvent(name: string, input: JsonRecord, base: JsonRecord): JsonRecord | null {
+  const normalized = name.toLowerCase();
+  if (["commit_created", "create_commit"].some((value) => normalized === value || normalized.endsWith(`__${value}`))) {
+    const sha = identifier(input.sha) ?? identifier(input.commit_sha) ?? identifier(input.oid);
+    return rawEvent(base, { kind: "commit_created", target: sha ? { type: "commit", value: sha } : null, summary: "Commit creation recorded by agent tool" });
+  }
+  if (["pr_opened", "create_pull_request", "pull_request_opened"].some((value) => normalized === value || normalized.endsWith(`__${value}`))) {
+    const number = identifier(input.pull_number) ?? identifier(input.number) ?? identifier(input.pr_number);
+    return rawEvent(base, { kind: "pr_opened", target: { type: "pull_request", ...(number ? { value: number } : {}) }, summary: "Pull request creation recorded by agent tool" });
+  }
+  if (["review_received", "pull_request_review_received"].some((value) => normalized === value || normalized.endsWith(`__${value}`))) {
+    const number = identifier(input.pull_number) ?? identifier(input.number) ?? identifier(input.pr_number);
+    return rawEvent(base, { kind: "review_received", target: { type: "pull_request", ...(number ? { value: number } : {}) }, summary: "Received review recorded by agent tool" });
+  }
+  return null;
+}
+
 function codexWrapperEvents(payload: JsonRecord, timestamp: string, runId: string, projectPath: string): JsonRecord[] {
   const input = text(payload.input);
   if (payload.name !== "exec" || !input) return [];
@@ -101,6 +122,13 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
   const runId = text(metaPayload.id) ?? `codex:${sourceRef}`;
   const startedAt = text(meta?.timestamp) ?? text(metaPayload.timestamp);
   const raw: JsonRecord[] = [];
+  const outputsByCall = new Map(records.flatMap((item) => {
+    if (item.type !== "response_item") return [];
+    const payload = record(item.payload);
+    const callId = text(payload.call_id);
+    if (payload.type !== "function_call_output" || !callId) return [];
+    return [[callId, parseArguments(payload.output)] as const];
+  }));
   if (startedAt) raw.push(rawEvent({}, { id: `${runId}:start`, timestamp: startedAt, runId, agentId: "root", kind: "run_started", summary: "Codex session started" }));
 
   for (const item of records) {
@@ -108,6 +136,15 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
     const payload = record(item.payload);
     const timestamp = text(item.timestamp);
     if (!timestamp) continue;
+    if (payload.type === "agent_message") {
+      const author = text(payload.author) ?? "agent";
+      raw.push(rawEvent({}, {
+        id: text(payload.id) ?? `${runId}:report:${raw.length}`, timestamp, runId, agentId: author,
+        parentAgentId: "root", kind: "knowledge_reported",
+        summary: "Agent completion report received"
+      }));
+      continue;
+    }
     if (payload.type === "custom_tool_call") {
       raw.push(...codexWrapperEvents(payload, timestamp, runId, projectPath));
       continue;
@@ -116,6 +153,11 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
     const name = text(payload.name) ?? "unknown";
     const args = parseArguments(payload.arguments);
     const id = text(payload.call_id) ?? `${runId}:${raw.length}`;
+    const delivered = deliveryEvent(name, args, { id, timestamp, runId, agentId: "root" });
+    if (delivered) {
+      raw.push(delivered);
+      continue;
+    }
     if (["exec_command", "shell_command"].includes(name)) {
       const command = text(args.cmd) ?? text(args.command);
       if (command) raw.push(rawEvent({}, { id, timestamp, runId, agentId: "root", kind: commandKind(command), target: { type: "command", value: command.slice(0, 500) }, summary: "Executed a repository command" }));
@@ -123,10 +165,11 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
       const path = projectRelative(args.path, projectPath);
       if (path) raw.push(rawEvent({}, { id, timestamp, runId, agentId: "root", kind: "file_read", target: { type: "file", path }, summary: "Inspected an image" }));
     } else if (name === "spawn_agent") {
-      const agentId = text(args.task_name) ?? `agent:${id}`;
-      raw.push(rawEvent({}, { id, timestamp, runId, agentId, parentAgentId: "root", taskId: text(args.task_name), kind: "agent_spawned", target: { type: "task", value: safeSummary(args.message) }, summary: safeSummary(args.message) }));
+      const output = outputsByCall.get(id) ?? {};
+      const agentId = text(output.agent_id) ?? text(args.task_name) ?? `agent:${id}`;
+      raw.push(rawEvent({}, { id, timestamp, runId, agentId, parentAgentId: "root", taskId: text(args.task_name), kind: "agent_spawned", target: { type: "task", value: text(args.task_name) }, summary: text(args.task_name) ? `Spawned agent for ${text(args.task_name)}` : "Spawned agent" }));
     } else if (name === "send_message") {
-      raw.push(rawEvent({}, { id, timestamp, runId, agentId: text(args.target) ?? "root", parentAgentId: "root", kind: "knowledge_reported", summary: safeSummary(args.message) }));
+      raw.push(rawEvent({}, { id, timestamp, runId, agentId: text(args.target) ?? "root", parentAgentId: "root", kind: "knowledge_reported", summary: "Agent knowledge handoff sent" }));
     }
   }
   const completed = [...records].reverse().find((item) => item.type === "event_msg" && record(item.payload).type === "task_complete");
@@ -139,6 +182,21 @@ export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sou
   if (matching.length === 0) return [];
   const runId = text(matching[0]?.sessionId) ?? `claude:${sourceRef}`;
   const raw: JsonRecord[] = [];
+  const agentResults = new Map<string, { agentId: string | null; timestamp: string }>();
+  for (const item of matching) {
+    const timestamp = text(item.timestamp);
+    if (!timestamp) continue;
+    const result = record(item.toolUseResult);
+    const message = record(item.message);
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    for (const blockValue of blocks) {
+      const block = record(blockValue);
+      const toolUseId = text(block.tool_use_id);
+      if (block.type === "tool_result" && toolUseId) {
+        agentResults.set(toolUseId, { agentId: text(result.agentId) ?? text(result.agent_id), timestamp });
+      }
+    }
+  }
   const firstTimestamp = matching.map((item) => text(item.timestamp)).find(Boolean);
   if (firstTimestamp) raw.push(rawEvent({}, { id: `${runId}:start`, timestamp: firstTimestamp, runId, agentId: "root", kind: "run_started", summary: "Claude session started" }));
 
@@ -155,18 +213,30 @@ export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sou
       if (!timestamp) continue;
       const id = text(block.id) ?? `${runId}:${raw.length}`;
       const filePath = projectRelative(input.file_path, projectPath);
+      const delivered = deliveryEvent(name, input, { id, timestamp, runId, agentId: "root" });
+      if (delivered) {
+        raw.push(delivered);
+        continue;
+      }
       if (name === "Read" && filePath) raw.push(rawEvent({}, { id, timestamp, runId, agentId: "root", kind: "file_read", target: { type: "file", path: filePath }, summary: "Read a repository file" }));
       else if (["Edit", "Write"].includes(name) && filePath) raw.push(rawEvent({}, { id, timestamp, runId, agentId: "root", kind: "file_edited", target: { type: "file", path: filePath }, summary: `${name === "Edit" ? "Edited" : "Wrote"} a repository file` }));
       else if (name === "Bash" && text(input.command)) {
         const command = text(input.command)!;
         raw.push(rawEvent({}, { id, timestamp, runId, agentId: "root", kind: commandKind(command), target: { type: "command", value: command.slice(0, 500) }, summary: "Executed a repository command" }));
       } else if (name === "Agent") {
-        const agentId = `agent:${id}`;
+        const agentId = agentResults.get(id)?.agentId ?? `agent:${id}`;
         raw.push(rawEvent({}, { id, timestamp, runId, agentId, parentAgentId: "root", taskId: text(input.description), kind: "agent_spawned", target: { type: "task", value: safeSummary(input.description) }, summary: safeSummary(input.description) }));
       } else if (name === "SendMessage") {
-        raw.push(rawEvent({}, { id, timestamp, runId, agentId: text(input.recipient) ?? text(input.to) ?? "root", parentAgentId: "root", kind: "knowledge_reported", summary: safeSummary(input.summary) ?? "Agent message sent" }));
+        raw.push(rawEvent({}, { id, timestamp, runId, agentId: text(input.recipient) ?? text(input.to) ?? "root", parentAgentId: "root", kind: "knowledge_reported", summary: "Agent knowledge handoff sent" }));
       }
     }
+  }
+  for (const [toolUseId, result] of agentResults) {
+    raw.push(rawEvent({}, {
+      id: `${toolUseId}:result`, timestamp: result.timestamp, runId,
+      agentId: result.agentId ?? `agent:${toolUseId}`, parentAgentId: "root",
+      kind: "knowledge_reported", summary: "Agent completion report received"
+    }));
   }
   const lastTimestamp = [...matching].reverse().map((item) => text(item.timestamp)).find(Boolean);
   if (lastTimestamp) raw.push(rawEvent({}, { id: `${runId}:finish`, timestamp: lastTimestamp, runId, agentId: "root", kind: "run_finished", summary: "Claude session ended" }));
