@@ -4,6 +4,7 @@ import { generateVisualization } from "./app.ts";
 import { extractGraph } from "./extract.ts";
 import type { PrepareGraphOptions } from "./granularity.ts";
 import { openCodeGraph } from "./open.ts";
+import type { TraceProvider } from "./types.ts";
 
 export interface CliOptions extends PrepareGraphOptions {
   projectPath: string;
@@ -13,6 +14,8 @@ export interface CliOptions extends PrepareGraphOptions {
   help: boolean;
   version: boolean;
   tracePaths: string[];
+  autoTraces: boolean;
+  providers: TraceProvider[];
 }
 
 export const HELP = `Usage: codegraph-viz [path] [options]
@@ -23,6 +26,8 @@ Options:
   --max-nodes <number>      Maximum visible nodes (default: 400)
   --filter <path>           Include path for symbol level; repeatable
   --trace <file>            Import provenance JSON or JSONL; repeatable
+  --provider <provider>     Discover codex or claude traces; repeatable
+  --no-agent-traces         Disable automatic local trace discovery
   --json                    Write extracted JSON to stdout instead of HTML
   --force                   Replace an existing output file
   -h, --help                Show help
@@ -35,11 +40,12 @@ function valueAfter(args: string[], index: number, option: string): string {
 }
 
 export function parseArguments(args: string[], cwd = process.cwd()): CliOptions {
-  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, filterPaths: [], tracePaths: [] };
+  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, filterPaths: [], tracePaths: [], autoTraces: true, providers: [] };
   let positional = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--json") result.json = true;
+    else if (argument === "--no-agent-traces") result.autoTraces = false;
     else if (argument === "--force") result.force = true;
     else if (argument === "-h" || argument === "--help") result.help = true;
     else if (argument === "-v" || argument === "--version") result.version = true;
@@ -54,6 +60,11 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
       result.maxNodes = value;
     } else if (argument === "--filter") result.filterPaths?.push(valueAfter(args, index++, argument));
     else if (argument === "--trace") result.tracePaths.push(valueAfter(args, index++, argument));
+    else if (argument === "--provider") {
+      const provider = valueAfter(args, index++, argument);
+      if (!(["codex", "claude"] as string[]).includes(provider)) throw new Error(`Invalid provider ${JSON.stringify(provider)}.`);
+      result.providers.push(provider as TraceProvider);
+    }
     else if (argument?.startsWith("-")) throw new Error(`Unknown option ${argument}.`);
     else if (positional) throw new Error("Only one project path may be provided.");
     else { result.projectPath = argument ?? cwd; positional = true; }
