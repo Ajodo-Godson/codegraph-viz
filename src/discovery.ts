@@ -141,6 +141,22 @@ function reconcileCodexAgentIds(events: JsonRecord[]): JsonRecord[] {
   });
 }
 
+function applyCodexSessionIdentity(events: JsonRecord[], agentPath: string | null): JsonRecord[] {
+  if (!agentPath || agentPath === "root" || agentPath === "/root") return events;
+  const separator = agentPath.lastIndexOf("/");
+  const parentAgentId = separator <= 0 ? "root" : agentPath.slice(0, separator) || "root";
+  return events.map((event) => {
+    const ownedBySession = event.agentId === "root";
+    return {
+      ...event,
+      agentId: ownedBySession ? agentPath : event.agentId,
+      parentAgentId: ownedBySession
+        ? event.parentAgentId ?? parentAgentId
+        : event.parentAgentId === "root" ? agentPath : event.parentAgentId
+    };
+  });
+}
+
 export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sourceRef: string): ProvenanceEvent[] {
   const meta = records.find((item) => item.type === "session_meta");
   const metaPayload = record(meta?.payload);
@@ -201,7 +217,7 @@ export function adaptCodexTrace(records: JsonRecord[], projectPath: string, sour
   }
   const completed = [...records].reverse().find((item) => item.type === "event_msg" && record(item.payload).type === "task_complete");
   if (completed?.timestamp) raw.push(rawEvent({}, { id: `${runId}:finish`, timestamp: completed.timestamp, runId, agentId: "root", kind: "run_finished", summary: "Codex session completed" }));
-  return normalizeProvenance(reconcileCodexAgentIds(raw), { provider: "codex", sourceRef });
+  return normalizeProvenance(reconcileCodexAgentIds(applyCodexSessionIdentity(raw, text(metaPayload.agent_path))), { provider: "codex", sourceRef });
 }
 
 export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sourceRef: string): ProvenanceEvent[] {

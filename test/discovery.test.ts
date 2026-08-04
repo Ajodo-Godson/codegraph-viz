@@ -49,6 +49,19 @@ test("reconciles Codex short task names with canonical agent paths", async () =>
   assert.equal(events.find(({ kind }) => kind === "agent_spawned")?.agentId, "/root/audit");
 });
 
+test("attributes subagent session file edits to the native agent path", async () => {
+  const project = await mkdtemp(join(tmpdir(), "codex-subagent-session-"));
+  const records = [
+    { type: "session_meta", timestamp: "2026-08-04T12:00:00Z", payload: { id: "run", cwd: project, agent_path: "/root/audit" } },
+    { type: "response_item", timestamp: "2026-08-04T12:01:00Z", payload: {
+      type: "custom_tool_call", name: "exec", call_id: "edit", input: `await tools.apply_patch(\"*** Begin Patch\\n*** Update File: ${join(project, "src/audit.ts")}\\n*** End Patch\")`
+    } }
+  ];
+  const events = adaptCodexTrace(records, project, "codex:fixture");
+  assert.equal(events.find(({ kind }) => kind === "file_edited")?.agentId, "/root/audit");
+  assert.equal(events.find(({ kind }) => kind === "file_edited")?.parentAgentId, "root");
+});
+
 test("adapts explicit Codex commit, pull request, and received-review tool evidence", async () => {
   const project = await mkdtemp(join(tmpdir(), "codex-delivery-project-"));
   const records = [
