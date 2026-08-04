@@ -57,7 +57,7 @@ function graphFixture(): PreparedGraph {
       changes: [{ path: "src/</script><img src=x>.ts", indexStatus: " ", worktreeStatus: "M", staged: false, unstaged: true, additions: 2, deletions: 1 }]
     },
     correlations: [{
-      path: "src/</script><img src=x>.ts", eventIds: ["knowledge"], agentIds: ["child"],
+      path: "src/</script><img src=x>.ts", commitShas: [], eventIds: ["knowledge"], agentIds: ["child"],
       symbolIds: ["danger"], evidence: ["explicit_event_target"], overlappingAgents: false,
       states: { inspected: true, proposed: false, modified: true, tested: false, committed: false, reviewed: false, prOpened: false }
     }]
@@ -108,4 +108,14 @@ test("includes multi-agent views and provenance filters", () => {
   assert.match(html, /renderChangesView/);
   assert.match(html, /renderKnowledgeView/);
   assert.match(html, /renderReviewView/);
+});
+
+test("explains evidence requirements and accepts committed change history defensively", () => {
+  const html = renderGraph(graphFixture(), { generatedAt: "2026-08-04T14:00:00Z" });
+
+  assert.match(html, /commit\.changes \|\| commit\.files/);
+  assert.match(html, /No working-tree or recent committed changes are available/);
+  assert.match(html, /Knowledge appears only when traces record a knowledge_reported event/);
+  assert.match(html, /Review status requires explicit test, commit, and review events/);
+  assert.match(html, /No review evidence or changed files are available/);
 });

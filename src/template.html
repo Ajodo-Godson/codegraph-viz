@@ -368,17 +368,36 @@
     function renderChangesView(events) {
       const visibleCorrelations = filteredCorrelations(events);
       const byPath = new Map(visibleCorrelations.map((item) => [item.path, item]));
-      const changes = gitSnapshot.changes.filter((change) => !filtersActive() || byPath.has(change.path));
-      viewHeader("Changes and attribution", `${changes.length} working-tree changes on ${gitSnapshot.branch || "detached HEAD"}`);
-      if (changes.length === 0) { secondaryView.append(element("p", "No changed files match the current filters.", "empty")); return; }
+      const workingChanges = (gitSnapshot.changes || [])
+        .filter((change) => !filtersActive() || byPath.has(change.path))
+        .map((change) => ({ ...change, source: "working tree", commit: null }));
+      const committedChanges = (gitSnapshot.recentCommits || []).flatMap((commit) =>
+        (commit.changes || commit.files || []).map((change) => ({
+          ...(typeof change === "string" ? { path: change } : change),
+          source: "commit",
+          commit
+        }))
+      ).filter((change) => change.path && (!filtersActive() || byPath.has(change.path)));
+      const changes = [...workingChanges, ...committedChanges];
+      viewHeader("Changes and attribution", `${workingChanges.length} working-tree and ${committedChanges.length} recent committed changes on ${gitSnapshot.branch || "detached HEAD"}`);
+      if (changes.length === 0) {
+        secondaryView.append(element("p", filtersActive()
+          ? "No working-tree or recent committed changes match the current filters."
+          : "No working-tree or recent committed changes are available. Generate the report inside a Git repository with local changes or recent commit file data.", "empty"));
+        return;
+      }
       const grid = element("div", undefined, "card-grid");
       for (const change of changes) {
         const correlation = byPath.get(change.path) || correlations.find((item) => item.path === change.path);
         const card = element("article", undefined, "card");
         card.append(element("h3", change.path));
-        card.append(element("p", `+${change.additions ?? "?"} / -${change.deletions ?? "?"} | ${change.staged ? "staged" : "not staged"}`));
-        card.append(element("p", correlation?.agentIds.length ? `Agents: ${correlation.agentIds.join(", ")}` : "Unattributed change", correlation?.agentIds.length ? "" : "empty"));
+        const changeState = change.commit
+          ? `commit ${change.commit.sha || "unknown"} | ${change.commit.subject || "No subject recorded"}`
+          : (change.staged ? "staged" : "not staged");
+        card.append(element("p", `+${change.additions ?? "?"} / -${change.deletions ?? "?"} | ${changeState}`));
+        card.append(element("p", correlation?.agentIds.length ? `Agents: ${correlation.agentIds.join(", ")}` : "No agent attribution evidence", correlation?.agentIds.length ? "" : "empty"));
         card.append(badges([
+          change.source,
           ...(correlation ? Object.entries(correlation.states).filter(([, enabled]) => enabled).map(([name]) => name) : []),
           ...(correlation?.overlappingAgents ? ["overlap"] : []),
           ...(correlation?.evidence || [])
@@ -391,7 +410,12 @@
     function renderKnowledgeView(events) {
       const knowledge = events.filter((event) => event.kind === "knowledge_reported");
       viewHeader("Knowledge and handoffs", `${knowledge.length} recorded conclusions`);
-      if (knowledge.length === 0) { secondaryView.append(element("p", "No knowledge reports match the current filters.", "empty")); return; }
+      if (knowledge.length === 0) {
+        secondaryView.append(element("p", filtersActive()
+          ? "No knowledge reports match the current filters. Knowledge appears only when traces record a knowledge_reported event."
+          : "No knowledge reports were recorded. Knowledge appears only when traces record a knowledge_reported event, such as an explicit subagent handoff or completion report.", "empty"));
+        return;
+      }
       const grid = element("div", undefined, "card-grid");
       for (const event of knowledge) {
         const card = element("article", undefined, "card");
@@ -406,12 +430,16 @@
 
     function renderReviewView(events) {
       const visible = filteredCorrelations(events);
-      const unattributed = gitSnapshot.changes.filter((change) => !correlations.some((item) => item.path === change.path && item.agentIds.length));
+      const workingChanges = gitSnapshot.changes || [];
+      const committedChanges = (gitSnapshot.recentCommits || []).flatMap((commit) => commit.changes || commit.files || []);
+      const changedPaths = [...new Set([...workingChanges, ...committedChanges].map((change) => typeof change === "string" ? change : change.path).filter(Boolean))];
+      const unattributed = changedPaths.filter((path) => !correlations.some((item) => item.path === path && item.agentIds.length));
       const overlaps = visible.filter((item) => item.overlappingAgents);
       const untested = visible.filter((item) => item.states.modified && !item.states.tested);
       const unreviewed = visible.filter((item) => item.states.modified && !item.states.reviewed);
       const uncommitted = visible.filter((item) => item.states.modified && !item.states.committed);
       viewHeader("Review readiness", "Evidence-based checks for incomplete agent work");
+      secondaryView.append(element("p", "Review status requires explicit test, commit, and review events. Missing trace evidence is not treated as verification.", "view-summary"));
       const metrics = element("div", undefined, "metrics");
       for (const [label, value] of [["Unattributed", unattributed.length], ["Overlaps", overlaps.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
         const metric = element("div", undefined, "metric");
@@ -419,8 +447,11 @@
         metrics.append(metric);
       }
       secondaryView.append(metrics);
-      const flagged = [...new Set([...unattributed.map((item) => item.path), ...overlaps.map((item) => item.path), ...untested.map((item) => item.path), ...unreviewed.map((item) => item.path), ...uncommitted.map((item) => item.path)])].sort();
-      if (flagged.length === 0) secondaryView.append(element("p", "No review risks are visible for the current filters.", "empty"));
+      const flagged = [...new Set([...unattributed, ...overlaps.map((item) => item.path), ...untested.map((item) => item.path), ...unreviewed.map((item) => item.path), ...uncommitted.map((item) => item.path)])].sort();
+      const reviewEvents = events.filter((event) => ["test_run", "commit_created", "review_received", "pr_opened"].includes(event.kind));
+      if (flagged.length === 0 && changedPaths.length === 0 && visible.length === 0 && reviewEvents.length === 0) {
+        secondaryView.append(element("p", "No review evidence or changed files are available. Import agent traces and Git history to assess readiness.", "empty"));
+      } else if (flagged.length === 0) secondaryView.append(element("p", "No review risks are visible for the recorded evidence and current filters.", "empty"));
       else {
         const grid = element("div", undefined, "card-grid");
         for (const path of flagged) {
