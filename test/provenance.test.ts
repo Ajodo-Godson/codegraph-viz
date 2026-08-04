@@ -32,6 +32,23 @@ test("retains unknown kinds and redacts secrets", () => {
   assert.deepEqual(event?.metadata, { token: "[REDACTED]", nested: { password: "[REDACTED]" } });
 });
 
+test("preserves per-event providers in arrays and redacts free-form targets", () => {
+  const events = normalizeProvenance([
+    {
+      timestamp: "2026-08-04T12:00:00Z", runId: "run", provider: "codex",
+      kind: "file_read", target: { type: "command", value: "curl -H 'Authorization: Bearer abcdefghijk'" }
+    },
+    {
+      timestamp: "2026-08-04T12:01:00Z", runId: "run", provider: "claude",
+      kind: "knowledge_reported", target: { type: "other", value: "used sk-abcdefghijk" }
+    }
+  ]);
+
+  assert.deepEqual(events.map(({ provider }) => provider), ["codex", "claude"]);
+  assert.equal(events[0]?.target?.value, "curl -H 'Authorization: [REDACTED]'");
+  assert.equal(events[1]?.target?.value, "used [REDACTED]");
+});
+
 test("rejects absolute targets and invalid timestamps", () => {
   assert.throws(() => normalizeProvenance([{ timestamp: "bad", runId: "run" }]), /valid timestamp/);
   assert.throws(() => normalizeProvenance([{ timestamp: "2026-08-04T12:00:00Z", runId: "run", target: "/secret" }]), /repository-relative/);

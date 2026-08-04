@@ -51,7 +51,7 @@ function normalizeTarget(value: unknown): ProvenanceTarget | null {
     type: (allowed.has(type) ? type : "other") as ProvenanceTarget["type"],
     ...(path ? { path: normalize(path).replaceAll("\\", "/") } : {}),
     ...(text(target.symbolId) ? { symbolId: text(target.symbolId)! } : {}),
-    ...(text(target.value) ? { value: text(target.value)! } : {}),
+    ...(text(redact(target.value)) ? { value: text(redact(target.value))! } : {}),
     ...(Number.isInteger(target.startLine) ? { startLine: Number(target.startLine) } : {}),
     ...(Number.isInteger(target.endLine) ? { endLine: Number(target.endLine) } : {})
   };
@@ -65,11 +65,12 @@ export interface NormalizeProvenanceOptions {
 export function normalizeProvenance(input: unknown, options: NormalizeProvenanceOptions = {}): ProvenanceEvent[] {
   const envelope = record(input);
   const rawEvents = Array.isArray(input) ? input : Array.isArray(envelope.events) ? envelope.events : [input];
-  const provider = options.provider ?? text(envelope.provider) ?? "generic";
+  const envelopeProvider = options.provider ?? text(envelope.provider);
   const sourceRef = options.sourceRef ?? text(envelope.sourceRef) ?? "inline";
 
   return rawEvents.map((value, index) => {
     const raw = record(value);
+    const provider = envelopeProvider ?? text(raw.provider) ?? "generic";
     const timestampValue = text(raw.timestamp) ?? text(raw.created_at);
     if (!timestampValue || Number.isNaN(Date.parse(timestampValue))) {
       throw new Error(`Provenance event ${index} requires a valid timestamp.`);
