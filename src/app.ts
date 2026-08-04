@@ -78,7 +78,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
       ? (await Promise.all(options.tracePaths.map((path) => readProvenanceFile(resolve(path))))).flat()
       : [];
     graph.provenance = [...new Map([...discovered.events, ...explicit].map((event) => [`${event.provider}\0${event.id}`, event])).values()]
-      .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
+      .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
     graph.traceDiagnostics = discovered.diagnostics;
     for (const diagnostic of discovered.diagnostics) opened.warnings.push(...diagnostic.warnings);
     try {

@@ -332,6 +332,6 @@ export async function discoverAgentTraces(options: DiscoverTraceOptions): Promis
     diagnostics.push(diagnostic);
   }
   const deduplicated = [...new Map(allEvents.map((event) => [`${event.provider}\0${event.id}`, event])).values()]
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
   return { events: deduplicated, diagnostics };
 }

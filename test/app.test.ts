@@ -55,6 +55,23 @@ test("automatically imports matching local agent traces", async () => {
   ]);
 });
 
+test("preserves normalized source order when merging timestamp ties", async () => {
+  const fixture = await createCodeGraphProject({ populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 1 });
+    insertNode(database, { id: "main", kind: "function", name: "main", filePath: "src/index.ts" });
+  } });
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-merge-order-"));
+  const tracePath = join(directory, "events.json");
+  await writeFile(tracePath, JSON.stringify([
+    { id: "z-first", timestamp: "2026-08-04T12:00:00Z", runId: "run", kind: "file_read", target: "src/index.ts" },
+    { id: "a-second", timestamp: "2026-08-04T12:00:00Z", runId: "run", kind: "file_edited", target: "src/index.ts" }
+  ]));
+  const result = await generateVisualization({
+    projectPath: fixture.projectPath, outputPath: join(directory, "map.html"), tracePaths: [tracePath], autoTraces: false
+  });
+  assert.deepEqual(result.graph.provenance?.map(({ id }) => id), ["z-first", "a-second"]);
+});
+
 test("loads and validates project layer configuration", async () => {
   const directory = await mkdtemp(join(tmpdir(), "codegraph-config-"));
   await writeFile(join(directory, "codegraph-viz.json"), JSON.stringify({ rename: { src: "app" } }));

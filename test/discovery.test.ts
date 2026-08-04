@@ -145,3 +145,15 @@ test("discovers matching provider sessions and reports diagnostics", async () =>
   assert.equal(result.events.length, 2);
   assert.deepEqual(result.diagnostics.map(({ sessionsMatched }) => sessionsMatched), [1, 0]);
 });
+
+test("preserves normalized source order for discovered timestamp ties", async () => {
+  const project = await mkdtemp(join(tmpdir(), "trace-order-project-"));
+  const codexRoot = await mkdtemp(join(tmpdir(), "trace-order-codex-"));
+  await writeFile(join(codexRoot, "one.jsonl"), [
+    { type: "session_meta", timestamp: "2026-08-04T11:59:00Z", payload: { id: "run", cwd: project } },
+    { type: "response_item", timestamp: "2026-08-04T12:00:00Z", payload: { type: "function_call", name: "exec_command", call_id: "z-first", arguments: JSON.stringify({ cmd: "npm test" }) } },
+    { type: "response_item", timestamp: "2026-08-04T12:00:00Z", payload: { type: "function_call", name: "exec_command", call_id: "a-second", arguments: JSON.stringify({ cmd: "npm test" }) } }
+  ].map((value) => JSON.stringify(value)).join("\n"));
+  const result = await discoverAgentTraces({ projectPath: project, providers: ["codex"], roots: { codex: codexRoot } });
+  assert.deepEqual(result.events.filter(({ kind }) => kind === "test_run").map(({ id }) => id), ["z-first", "a-second"]);
+});
