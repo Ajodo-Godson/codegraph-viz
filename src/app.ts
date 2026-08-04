@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { extractGraph } from "./extract.ts";
 import { correlateChanges } from "./correlate.ts";
@@ -49,7 +49,7 @@ export async function loadLayerConfiguration(projectPath: string): Promise<Layer
 
 async function writeAtomic(path: string, content: string, force: boolean): Promise<void> {
   if (!force && await exists(path)) throw new Error(`Output already exists at ${path}; use --force to replace it.`);
-  const temporary = join(dirname(path), `.${path.split("/").at(-1)}.${process.pid}.${Date.now()}.tmp`);
+  const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
   try {
     await writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
     await rename(temporary, path);
