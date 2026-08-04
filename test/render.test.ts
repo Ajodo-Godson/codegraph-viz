@@ -36,7 +36,31 @@ function graphFixture(): PreparedGraph {
     report: {
       totalNodes: 10, shownNodes: 1, droppedNodes: 9,
       totalLinks: 3, shownLinks: 0, droppedLinks: 3, pruned: true
-    }
+    },
+    provenance: [
+      {
+        id: "spawn", timestamp: "2026-08-04T12:00:00.000Z", provider: "codex",
+        runId: "run-1", agentId: "child", parentAgentId: "root", taskId: "task-1",
+        kind: "agent_spawned", knownKind: true, target: { type: "task", value: "Inspect parser" },
+        summary: "Delegated parser inspection", sourceRef: "fixture", metadata: {}
+      },
+      {
+        id: "knowledge", timestamp: "2026-08-04T12:01:00.000Z", provider: "codex",
+        runId: "run-1", agentId: "child", parentAgentId: "root", taskId: "task-1",
+        kind: "knowledge_reported", knownKind: true,
+        target: { type: "file", path: "src/</script><img src=x>.ts" },
+        summary: "Parser uses a read transaction", sourceRef: "fixture", metadata: {}
+      }
+    ],
+    git: {
+      root: "/repo", branch: "feature", head: "abc123", recentCommits: [],
+      changes: [{ path: "src/</script><img src=x>.ts", indexStatus: " ", worktreeStatus: "M", staged: false, unstaged: true, additions: 2, deletions: 1 }]
+    },
+    correlations: [{
+      path: "src/</script><img src=x>.ts", eventIds: ["knowledge"], agentIds: ["child"],
+      symbolIds: ["danger"], evidence: ["explicit_event_target"], overlappingAgents: false,
+      states: { inspected: true, proposed: false, modified: true, tested: false, committed: false, reviewed: false, prOpened: false }
+    }]
   };
 }
 
@@ -67,4 +91,21 @@ test("includes interaction, completeness, theme, and accessibility controls", ()
   assert.match(html, /prefers-reduced-motion: reduce/);
   assert.match(html, /overflow-x: hidden/);
   assert.match(html, /aria-label="Code graph"/);
+});
+
+test("includes multi-agent views and provenance filters", () => {
+  const html = renderGraph(graphFixture(), { generatedAt: "2026-08-04T14:00:00Z" });
+
+  for (const view of ["code", "agents", "timeline", "changes", "knowledge", "review"]) {
+    assert.match(html, new RegExp(`data-view="${view}"`));
+  }
+  for (const filter of ["run-filter", "agent-filter", "task-filter", "provider-filter", "status-filter", "time-from", "time-to"]) {
+    assert.match(html, new RegExp(`id="${filter}"`));
+  }
+  assert.match(html, /id="secondary-view"/);
+  assert.match(html, /renderAgentView/);
+  assert.match(html, /renderTimelineView/);
+  assert.match(html, /renderChangesView/);
+  assert.match(html, /renderKnowledgeView/);
+  assert.match(html, /renderReviewView/);
 });

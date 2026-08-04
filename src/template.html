@@ -44,12 +44,16 @@
     button { cursor: pointer; padding: 7px 10px; }
     button:hover { background: var(--surface-2); }
     :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    .app { display: grid; grid-template-rows: auto 1fr; height: 100%; min-width: 0; }
+    .app { display: grid; grid-template-rows: auto auto 1fr; height: 100%; min-width: 0; }
     header { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); min-width: 0; }
     h1 { margin: 0; font-size: 17px; letter-spacing: -0.02em; white-space: nowrap; }
     .meta { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .meta strong { color: var(--text); }
     .spacer { flex: 1; }
+    .view-tabs { display: flex; gap: 4px; padding: 7px 16px; overflow-x: auto; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .view-tab { white-space: nowrap; border-color: transparent; background: transparent; }
+    .view-tab[aria-selected="true"] { color: var(--accent); background: var(--surface-2); border-color: var(--border); font-weight: 700; }
+    #controls-toggle { display: none; }
     .workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 320px; min-height: 0; }
     aside { background: var(--surface); overflow: auto; min-width: 0; }
     .controls { border-right: 1px solid var(--border); padding: 16px; }
@@ -57,6 +61,8 @@
     .section { margin-bottom: 22px; }
     .section h2, .details h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
     #search { width: 100%; padding: 9px 10px; }
+    select, input[type="datetime-local"] { width: 100%; min-width: 0; padding: 7px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; }
+    .field { display: grid; gap: 4px; margin: 8px 0; color: var(--muted); font-size: 12px; }
     .filter { display: flex; gap: 8px; align-items: center; margin: 7px 0; min-width: 0; }
     .swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
     .filter span:last-child { overflow: hidden; text-overflow: ellipsis; }
@@ -72,6 +78,24 @@
     .facts dd { margin: 0; overflow-wrap: anywhere; }
     .item { display: block; width: 100%; text-align: left; margin: 6px 0; overflow-wrap: anywhere; }
     .legend-note { color: var(--muted); font-size: 12px; }
+    .secondary-view { position: absolute; inset: 0; overflow: auto; padding: 24px; background: var(--bg); }
+    .secondary-view[hidden], canvas[hidden], .hint[hidden] { display: none; }
+    .view-heading { margin: 0 0 4px; font-size: 24px; }
+    .view-summary { margin: 0 0 20px; color: var(--muted); }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .card { min-width: 0; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow-wrap: anywhere; }
+    .card h3 { margin: 0 0 4px; font-size: 15px; }
+    .card p { margin: 5px 0; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); font-size: 11px; }
+    .badge.warning { color: #b45309; border-color: #d97706; }
+    .timeline { position: relative; display: grid; gap: 10px; padding-left: 22px; }
+    .timeline::before { content: ""; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
+    .timeline-item { position: relative; }
+    .timeline-item::before { content: ""; position: absolute; left: -20px; top: 19px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .metric { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .metric strong { display: block; font-size: 24px; }
     @media (max-width: 900px) {
       .workspace { grid-template-columns: 210px minmax(0, 1fr); }
       .details { position: absolute; z-index: 4; right: 12px; top: 76px; bottom: 12px; width: min(320px, calc(100vw - 236px)); box-shadow: var(--shadow); border: 1px solid var(--border); border-radius: 12px; }
@@ -80,7 +104,9 @@
       header { gap: 8px; }
       .meta { display: none; }
       .workspace { grid-template-columns: 1fr; }
-      .controls { position: absolute; z-index: 5; left: 8px; top: 66px; width: 190px; max-height: 55vh; box-shadow: var(--shadow); border: 1px solid var(--border); border-radius: 12px; }
+      #controls-toggle { display: inline-block; }
+      .controls { display: none; position: absolute; z-index: 5; left: 8px; top: 112px; width: min(230px, calc(100vw - 16px)); max-height: calc(100vh - 124px); box-shadow: var(--shadow); border: 1px solid var(--border); border-radius: 12px; }
+      .controls[data-open="true"] { display: block; }
       .details { width: min(300px, calc(100vw - 16px)); right: 8px; top: auto; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -94,15 +120,36 @@
       <h1>CodeGraph map</h1>
       <div class="meta"><strong>__COMPLETENESS__</strong> | Generated __GENERATED_AT__ | Newest index __INDEXED_AT__</div>
       <div class="spacer"></div>
+      <button id="controls-toggle" type="button" aria-expanded="false" aria-controls="graph-controls">Filters</button>
       <button id="reset-view" type="button">Reset view</button>
       <button id="theme-toggle" type="button" aria-label="Toggle color theme">Theme</button>
     </header>
+    <nav class="view-tabs" aria-label="Visualization views">
+      <button class="view-tab" type="button" data-view="code" aria-selected="true">Code</button>
+      <button class="view-tab" type="button" data-view="agents" aria-selected="false">Agents</button>
+      <button class="view-tab" type="button" data-view="timeline" aria-selected="false">Timeline</button>
+      <button class="view-tab" type="button" data-view="changes" aria-selected="false">Changes</button>
+      <button class="view-tab" type="button" data-view="knowledge" aria-selected="false">Knowledge</button>
+      <button class="view-tab" type="button" data-view="review" aria-selected="false">Review</button>
+    </nav>
     <main class="workspace">
-      <aside class="controls" aria-label="Graph controls">
+      <aside id="graph-controls" class="controls" aria-label="Graph controls">
         <div class="section">
           <h2>Search</h2>
           <input id="search" type="search" placeholder="Path or symbol" autocomplete="off">
           <div id="search-status" class="legend-note" aria-live="polite"></div>
+        </div>
+        <div class="section">
+          <h2>Agent activity</h2>
+          <label class="field">Run<select id="run-filter"><option value="">All runs</option></select></label>
+          <label class="field">Agent<select id="agent-filter"><option value="">All agents</option></select></label>
+          <label class="field">Task<select id="task-filter"><option value="">All tasks</option></select></label>
+          <label class="field">Provider<select id="provider-filter"><option value="">All providers</option></select></label>
+          <label class="field">Status<select id="status-filter"><option value="">All statuses</option></select></label>
+          <label class="field">From<input id="time-from" type="datetime-local"></label>
+          <label class="field">To<input id="time-to" type="datetime-local"></label>
+          <button id="clear-agent-filters" type="button">Clear activity filters</button>
+          <p id="activity-status" class="legend-note" aria-live="polite"></p>
         </div>
         <div class="section">
           <h2>Layers</h2>
@@ -116,6 +163,7 @@
       </aside>
       <section class="stage">
         <canvas id="graph-canvas" tabindex="0" aria-label="Code graph"></canvas>
+        <section id="secondary-view" class="secondary-view" tabindex="-1" aria-live="polite" hidden></section>
         <div class="hint">Drag nodes. Drag empty space to pan. Scroll to zoom.</div>
       </section>
       <aside id="detail-panel" class="details" aria-label="Selection details">
@@ -134,6 +182,21 @@
     const detailPanel = document.getElementById("detail-panel");
     const search = document.getElementById("search");
     const searchStatus = document.getElementById("search-status");
+    const secondaryView = document.getElementById("secondary-view");
+    const hint = document.querySelector(".hint");
+    const provenance = graph.provenance || [];
+    const correlations = graph.correlations || [];
+    const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
+    const eventById = new Map(provenance.map((event) => [event.id, event]));
+    const activityFilters = {
+      run: document.getElementById("run-filter"),
+      agent: document.getElementById("agent-filter"),
+      task: document.getElementById("task-filter"),
+      provider: document.getElementById("provider-filter"),
+      status: document.getElementById("status-filter"),
+      from: document.getElementById("time-from"),
+      to: document.getElementById("time-to")
+    };
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const layerColors = Object.fromEntries(graph.layers.map((layer) => [layer.id, layer.color]));
     const enabledLayers = new Set(graph.layers.map((layer) => layer.id));
@@ -148,6 +211,7 @@
     let hovered = null;
     let selected = null;
     let pointer = null;
+    let activeView = "code";
     const simulationTicks = 90;
     let ticks = reducedMotion ? simulationTicks : 0;
 
@@ -192,6 +256,210 @@
       }
       row.append(element("span", label));
       document.getElementById(containerId).append(row);
+    }
+
+    function addOptions(select, values) {
+      for (const value of [...new Set(values.filter(Boolean))].sort()) {
+        const option = element("option", value);
+        option.value = value;
+        select.append(option);
+      }
+    }
+
+    addOptions(activityFilters.run, provenance.map((event) => event.runId));
+    addOptions(activityFilters.agent, provenance.map((event) => event.agentId));
+    addOptions(activityFilters.task, provenance.map((event) => event.taskId));
+    addOptions(activityFilters.provider, provenance.map((event) => event.provider));
+    addOptions(activityFilters.status, provenance.map((event) => event.kind));
+
+    function filteredEvents() {
+      const from = activityFilters.from.value ? new Date(activityFilters.from.value).valueOf() : -Infinity;
+      const to = activityFilters.to.value ? new Date(activityFilters.to.value).valueOf() : Infinity;
+      const result = provenance.filter((event) =>
+        (!activityFilters.run.value || event.runId === activityFilters.run.value) &&
+        (!activityFilters.agent.value || event.agentId === activityFilters.agent.value) &&
+        (!activityFilters.task.value || event.taskId === activityFilters.task.value) &&
+        (!activityFilters.provider.value || event.provider === activityFilters.provider.value) &&
+        (!activityFilters.status.value || event.kind === activityFilters.status.value) &&
+        new Date(event.timestamp).valueOf() >= from && new Date(event.timestamp).valueOf() <= to
+      );
+      document.getElementById("activity-status").textContent = `${result.length} of ${provenance.length} events`;
+      return result;
+    }
+
+    function filtersActive() {
+      return Object.values(activityFilters).some((control) => control.value);
+    }
+
+    function filteredCorrelations(events) {
+      if (!filtersActive()) return correlations;
+      const ids = new Set(events.map((event) => event.id));
+      return correlations.filter((item) => item.eventIds.some((id) => ids.has(id)));
+    }
+
+    function clearSecondary() {
+      while (secondaryView.firstChild) secondaryView.firstChild.remove();
+    }
+
+    function viewHeader(title, summary) {
+      clearSecondary();
+      secondaryView.append(element("h2", title, "view-heading"));
+      secondaryView.append(element("p", summary, "view-summary"));
+    }
+
+    function badges(values, warningValues = new Set()) {
+      const row = element("div", undefined, "badge-row");
+      for (const value of values.filter(Boolean)) {
+        row.append(element("span", value, `badge${warningValues.has(value) ? " warning" : ""}`));
+      }
+      return row;
+    }
+
+    function targetText(event) {
+      if (!event.target) return "No target";
+      return event.target.path || event.target.symbolId || event.target.value || event.target.type;
+    }
+
+    function renderAgentView(events) {
+      const agents = new Map();
+      for (const event of events) {
+        let agent = agents.get(event.agentId);
+        if (!agent) {
+          agent = { id: event.agentId, parent: event.parentAgentId, events: [], tasks: new Set(), files: new Set(), providers: new Set() };
+          agents.set(event.agentId, agent);
+        }
+        agent.events.push(event);
+        if (event.taskId) agent.tasks.add(event.taskId);
+        if (event.target?.path) agent.files.add(event.target.path);
+        agent.providers.add(event.provider);
+      }
+      viewHeader("Agent delegation", `${agents.size} agents across ${new Set(events.map((event) => event.runId)).size} runs`);
+      if (agents.size === 0) { secondaryView.append(element("p", "No agent events match the current filters.", "empty")); return; }
+      const grid = element("div", undefined, "card-grid");
+      const depth = (agent) => { let value = 0; let parent = agent.parent; const seen = new Set(); while (parent && agents.has(parent) && !seen.has(parent)) { seen.add(parent); value += 1; parent = agents.get(parent).parent; } return value; };
+      for (const agent of [...agents.values()].sort((left, right) => depth(left) - depth(right) || left.id.localeCompare(right.id))) {
+        const card = element("article", undefined, "card");
+        card.style.borderLeftWidth = `${3 + Math.min(5, depth(agent))}px`;
+        card.append(element("h3", agent.id));
+        card.append(element("p", agent.parent ? `Parent: ${agent.parent}` : "Root agent", "path"));
+        card.append(element("p", `${agent.events.length} events | ${agent.tasks.size} tasks | ${agent.files.size} files`));
+        card.append(badges([...agent.providers, ...agent.tasks]));
+        grid.append(card);
+      }
+      secondaryView.append(grid);
+    }
+
+    function renderTimelineView(events) {
+      viewHeader("Activity timeline", `${events.length} events in chronological order`);
+      if (events.length === 0) { secondaryView.append(element("p", "No events match the current filters.", "empty")); return; }
+      const timeline = element("div", undefined, "timeline");
+      for (const event of events) {
+        const card = element("article", undefined, "card timeline-item");
+        card.append(element("h3", `${event.kind} | ${event.agentId}`));
+        card.append(element("p", new Date(event.timestamp).toLocaleString(), "path"));
+        card.append(element("p", event.summary || "No summary recorded"));
+        card.append(element("p", targetText(event), "path"));
+        card.append(badges([event.provider, event.runId, event.taskId, event.knownKind ? "known event" : "unknown event"], new Set(event.knownKind ? [] : ["unknown event"])));
+        timeline.append(card);
+      }
+      secondaryView.append(timeline);
+    }
+
+    function renderChangesView(events) {
+      const visibleCorrelations = filteredCorrelations(events);
+      const byPath = new Map(visibleCorrelations.map((item) => [item.path, item]));
+      const changes = gitSnapshot.changes.filter((change) => !filtersActive() || byPath.has(change.path));
+      viewHeader("Changes and attribution", `${changes.length} working-tree changes on ${gitSnapshot.branch || "detached HEAD"}`);
+      if (changes.length === 0) { secondaryView.append(element("p", "No changed files match the current filters.", "empty")); return; }
+      const grid = element("div", undefined, "card-grid");
+      for (const change of changes) {
+        const correlation = byPath.get(change.path) || correlations.find((item) => item.path === change.path);
+        const card = element("article", undefined, "card");
+        card.append(element("h3", change.path));
+        card.append(element("p", `+${change.additions ?? "?"} / -${change.deletions ?? "?"} | ${change.staged ? "staged" : "not staged"}`));
+        card.append(element("p", correlation?.agentIds.length ? `Agents: ${correlation.agentIds.join(", ")}` : "Unattributed change", correlation?.agentIds.length ? "" : "empty"));
+        card.append(badges([
+          ...(correlation ? Object.entries(correlation.states).filter(([, enabled]) => enabled).map(([name]) => name) : []),
+          ...(correlation?.overlappingAgents ? ["overlap"] : []),
+          ...(correlation?.evidence || [])
+        ], new Set(["overlap"])));
+        grid.append(card);
+      }
+      secondaryView.append(grid);
+    }
+
+    function renderKnowledgeView(events) {
+      const knowledge = events.filter((event) => event.kind === "knowledge_reported");
+      viewHeader("Knowledge and handoffs", `${knowledge.length} recorded conclusions`);
+      if (knowledge.length === 0) { secondaryView.append(element("p", "No knowledge reports match the current filters.", "empty")); return; }
+      const grid = element("div", undefined, "card-grid");
+      for (const event of knowledge) {
+        const card = element("article", undefined, "card");
+        card.append(element("h3", event.summary || "Untitled knowledge report"));
+        card.append(element("p", `${event.agentId}${event.parentAgentId ? ` to ${event.parentAgentId}` : ""}`));
+        card.append(element("p", targetText(event), "path"));
+        card.append(badges([event.provider, event.runId, event.taskId, event.sourceRef]));
+        grid.append(card);
+      }
+      secondaryView.append(grid);
+    }
+
+    function renderReviewView(events) {
+      const visible = filteredCorrelations(events);
+      const unattributed = gitSnapshot.changes.filter((change) => !correlations.some((item) => item.path === change.path && item.agentIds.length));
+      const overlaps = visible.filter((item) => item.overlappingAgents);
+      const untested = visible.filter((item) => item.states.modified && !item.states.tested);
+      const unreviewed = visible.filter((item) => item.states.modified && !item.states.reviewed);
+      const uncommitted = visible.filter((item) => item.states.modified && !item.states.committed);
+      viewHeader("Review readiness", "Evidence-based checks for incomplete agent work");
+      const metrics = element("div", undefined, "metrics");
+      for (const [label, value] of [["Unattributed", unattributed.length], ["Overlaps", overlaps.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
+        const metric = element("div", undefined, "metric");
+        metric.append(element("strong", String(value)), element("span", label));
+        metrics.append(metric);
+      }
+      secondaryView.append(metrics);
+      const flagged = [...new Set([...unattributed.map((item) => item.path), ...overlaps.map((item) => item.path), ...untested.map((item) => item.path), ...unreviewed.map((item) => item.path), ...uncommitted.map((item) => item.path)])].sort();
+      if (flagged.length === 0) secondaryView.append(element("p", "No review risks are visible for the current filters.", "empty"));
+      else {
+        const grid = element("div", undefined, "card-grid");
+        for (const path of flagged) {
+          const item = correlations.find((correlation) => correlation.path === path);
+          const risks = [];
+          if (!item?.agentIds.length) risks.push("unattributed");
+          if (item?.overlappingAgents) risks.push("overlap");
+          if (item?.states.modified && !item.states.tested) risks.push("untested");
+          if (item?.states.modified && !item.states.reviewed) risks.push("unreviewed");
+          if (item?.states.modified && !item.states.committed) risks.push("uncommitted");
+          const card = element("article", undefined, "card");
+          card.append(element("h3", path));
+          card.append(badges(risks, new Set(risks)));
+          grid.append(card);
+        }
+        secondaryView.append(grid);
+      }
+    }
+
+    function renderActiveView() {
+      const events = filteredEvents();
+      if (activeView === "agents") renderAgentView(events);
+      else if (activeView === "timeline") renderTimelineView(events);
+      else if (activeView === "changes") renderChangesView(events);
+      else if (activeView === "knowledge") renderKnowledgeView(events);
+      else if (activeView === "review") renderReviewView(events);
+      else draw();
+    }
+
+    function setView(view) {
+      activeView = view;
+      const code = view === "code";
+      canvas.hidden = !code;
+      hint.hidden = !code;
+      secondaryView.hidden = code;
+      document.getElementById("reset-view").hidden = !code;
+      for (const tab of document.querySelectorAll(".view-tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === view));
+      renderActiveView();
+      if (!code) secondaryView.focus();
     }
 
     for (const layer of graph.layers) addFilter("layer-filters", layer.id, `${layer.label} (${layer.fileCount})`, layer.color, enabledLayers);
@@ -436,6 +704,23 @@
       if (target) showNode(target); else draw();
     });
 
+    for (const tab of document.querySelectorAll(".view-tab")) {
+      tab.addEventListener("click", () => setView(tab.dataset.view));
+    }
+    for (const control of Object.values(activityFilters)) {
+      control.addEventListener("change", renderActiveView);
+    }
+    document.getElementById("clear-agent-filters").addEventListener("click", () => {
+      for (const control of Object.values(activityFilters)) control.value = "";
+      renderActiveView();
+    });
+    document.getElementById("controls-toggle").addEventListener("click", (event) => {
+      const controls = document.getElementById("graph-controls");
+      const open = controls.dataset.open !== "true";
+      controls.dataset.open = String(open);
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
     document.getElementById("reset-view").addEventListener("click", () => { fitView(); draw(); });
     document.getElementById("theme-toggle").addEventListener("click", () => {
       const root = document.documentElement;
@@ -456,6 +741,7 @@
     }
     new ResizeObserver(resize).observe(canvas);
     resize();
+    filteredEvents();
     if (graph.report.pruned) document.querySelector("header .meta strong").classList.add("pruned");
     if (reducedMotion) { for (let index = 0; index < ticks; index += 1) simulate(); fitView(); draw(); } else requestAnimationFrame(frame);
   })();
