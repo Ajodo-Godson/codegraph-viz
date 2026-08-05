@@ -20,6 +20,7 @@ event timing.
 
 ```bash
 npm install
+npm run build
 ```
 
 Generate a report for the current project:
@@ -77,6 +78,9 @@ Example client configuration:
 }
 ```
 
+After installing a packed or published package, the MCP command is simply
+`codegraph-viz-mcp`.
+
 ## Evidence model
 
 - Code structure comes from the read-only CodeGraph SQLite database.
@@ -95,14 +99,19 @@ are displayed as text rather than active network links.
 
 ```bash
 npm run typecheck
+npm run build
 npm test
 npm run check
+npm pack --dry-run
 ```
 
 `npm run check` is also run by GitHub Actions. The test suite includes a
 checked-in golden extraction payload and Playwright verification for navigation,
 filters, both themes, reduced motion, desktop and narrow viewports, page errors,
 horizontal overflow, and external requests.
+The package test installs the generated tarball into a clean temporary project,
+runs the compiled CLI, connects to the compiled MCP server over stdio, invokes
+`visualize_codegraph`, and verifies that neither result contains the HTML body.
 
 ## Project status
 

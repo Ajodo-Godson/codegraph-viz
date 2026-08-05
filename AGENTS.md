@@ -79,10 +79,12 @@ itself.
 
 ## 3. Environment
 
-TypeScript on Node, no emitted build artifacts, near-zero dependencies. Source,
-tests, and executable entry points use `.ts`. Node executes erasable TypeScript
-directly, while `tsc --noEmit` verifies types. Do not add JavaScript counterparts
-or generated `dist` files. CodeGraph itself is a Node tool and reports
+TypeScript on Node with near-zero dependencies. Source, tests, and repository
+entry points use `.ts`. Node executes erasable TypeScript directly during
+development, while `tsc --noEmit` verifies types. The npm `prepack` lifecycle
+compiles source into an ignored `dist` directory because Node does not strip
+TypeScript inside installed `node_modules`. Do not commit generated `dist` files
+or maintain handwritten JavaScript counterparts. CodeGraph itself is a Node tool and reports
 `node:sqlite` as its backend, so the runtime can read the database with no native
 module and no ORM.
 
@@ -103,7 +105,7 @@ npm install @modelcontextprotocol/sdk
 # optional, for the render smoke test in M6
 npm install -D playwright
 
-# development-only type checking, with no emitted build output
+# development-only type checking and package compilation
 npm install -D typescript @types/node
 ```
 
@@ -301,6 +303,8 @@ matching method. A timestamp alone is never sufficient evidence of authorship.
 - All production and test modules are TypeScript. Public functions and persisted
   payloads have explicit types in `src/types.ts`; do not use JavaScript shadow
   files or disable type checking to land a feature.
+- Published packages contain compiler-generated JavaScript under `dist`; keep
+  it ignored and verify the packed installation through `test/package.test.ts`.
 - Run `npm run check` before committing a completed feature.
 - Write the failing test first for anything in extract or granularity.
 - Prefer clarity over cleverness in the SQL.
