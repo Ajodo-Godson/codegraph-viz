@@ -16,6 +16,14 @@ test("installer exposes the simple setup contract", async () => {
   assert.match(stdout, /CODEGRAPH_VIZ_BIN_DIR/);
 });
 
+test("installer includes direct CLI and MCP next steps", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) => readFile(script, "utf8"));
+  assert.match(source, /codegraph init/);
+  assert.match(source, /codegraph-viz/);
+  assert.match(source, /codex mcp add codegraph-viz -- codegraph-viz-mcp/);
+  assert.match(source, /claude mcp add --scope user codegraph-viz -- codegraph-viz-mcp/);
+});
+
 test("installer uninstall removes only its installation and launchers", async () => {
   const root = await mkdtemp(join(tmpdir(), "codegraph-viz-uninstall-"));
   const installDir = join(root, "install");
