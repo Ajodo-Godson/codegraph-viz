@@ -137,5 +137,7 @@ test("supports clickable agent contributions and consistent filter navigation", 
   assert.match(html, /function clearActivityFilters/);
   assert.match(html, /selected = null/);
   assert.match(html, /function resetGraphFilters/);
+  assert.match(html, /function showUnindexedContribution/);
+  assert.match(html, /not present in the current CodeGraph index/);
   assert.match(html, /setView\("code"\)/);
 });

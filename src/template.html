@@ -353,17 +353,32 @@
       detailPanel.append(element("h2", `Contributed files (${paths.length})`));
       if (paths.length === 0) detailPanel.append(element("p", "No file-targeted evidence was recorded for this agent.", "empty"));
       for (const path of paths) {
-        const button = element("button", path, "item");
+        const node = nodeForPath(path);
+        const button = element("button", node ? path : `${path} | not indexed`, "item");
         button.type = "button";
         button.addEventListener("click", () => {
-          const node = nodeForPath(path);
+          if (!node) {
+            showUnindexedContribution(agentId, path);
+            return;
+          }
           setView("code");
-          if (node) showNode(node);
+          showNode(node);
         });
         detailPanel.append(button);
       }
       detailPanel.append(element("h2", `Knowledge (${knowledge.length})`));
       for (const event of knowledge.slice(0, 20)) detailPanel.append(element("p", event.summary || "Knowledge report", "path"));
+    }
+
+    function showUnindexedContribution(agentId, path) {
+      clearPanel();
+      detailPanel.append(element("div", "Contribution not indexed", "title"));
+      detailPanel.append(element("div", path, "path"));
+      detailPanel.append(element("p", "This file is recorded in the agent trace but is not present in the current CodeGraph index. Refresh the CodeGraph index and regenerate this map before opening it in Code view.", "empty"));
+      const back = element("button", "Back to agent contributions", "item");
+      back.type = "button";
+      back.addEventListener("click", () => showAgentDetails(agentId));
+      detailPanel.append(back);
     }
 
     function showDefaultDetails() {

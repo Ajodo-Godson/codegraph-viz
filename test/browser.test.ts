@@ -96,15 +96,26 @@ function browserGraphFixture(): PreparedGraph {
       ],
       recentCommits: []
     },
-    correlations: [{
-      path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
-      agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
-      overlappingAgents: false,
-      states: {
-        inspected: true, proposed: false, modified: true, tested: false,
-        committed: false, reviewed: false, prOpened: false
+    correlations: [
+      {
+        path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
+        agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
+        overlappingAgents: false,
+        states: {
+          inspected: true, proposed: false, modified: true, tested: false,
+          committed: false, reviewed: false, prOpened: false
+        }
+      },
+      {
+        path: "test/browser.test.ts", commitShas: [], eventIds: [],
+        agentIds: ["/root/worker"], symbolIds: [], evidence: ["explicit_event_target"],
+        overlappingAgents: false,
+        states: {
+          inspected: true, proposed: false, modified: false, tested: false,
+          committed: false, reviewed: false, prOpened: false
+        }
       }
-    }]
+    ]
   };
 }
 
@@ -140,6 +151,11 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.equal(new URL(page.url()).hash, "#agent=%2Froot%2Fworker");
     assert.equal(await worker.getAttribute("aria-pressed"), "true");
     await assert.doesNotReject(() => page.locator("#detail-panel").getByText("Agent contribution").waitFor());
+    await assert.doesNotReject(() => page.locator("#detail-panel").getByRole("button", { name: "src/alpha.ts" }).waitFor());
+    await page.locator("#detail-panel").getByRole("button", { name: /test\/browser\.test\.ts.*not indexed/ }).click();
+    assert.equal(await page.locator('.view-tab[data-view="agents"]').getAttribute("aria-selected"), "true");
+    assert.match(await page.locator("#detail-panel").innerText(), /not present in the current CodeGraph index/);
+    await page.locator("#detail-panel").getByRole("button", { name: "Back to agent contributions" }).click();
     await assert.doesNotReject(() => page.locator("#detail-panel").getByRole("button", { name: "src/alpha.ts" }).waitFor());
 
     await selectView(page, "timeline");
