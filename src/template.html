@@ -53,6 +53,7 @@
     .view-tabs { display: flex; gap: 4px; padding: 7px 16px; overflow-x: auto; background: var(--surface); border-bottom: 1px solid var(--border); }
     .view-tab { white-space: nowrap; border-color: transparent; background: transparent; }
     .view-tab[aria-selected="true"] { color: var(--accent); background: var(--surface-2); border-color: var(--border); font-weight: 700; }
+    .full-graph { margin-left: auto; white-space: nowrap; color: var(--accent); border-color: var(--border); }
     #controls-toggle { display: none; }
     .workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 320px; min-height: 0; }
     aside { background: var(--surface); overflow: auto; min-width: 0; }
@@ -133,6 +134,7 @@
       <button class="view-tab" type="button" data-view="changes" aria-selected="false">Changes</button>
       <button class="view-tab" type="button" data-view="knowledge" aria-selected="false">Knowledge</button>
       <button class="view-tab" type="button" data-view="review" aria-selected="false">Review</button>
+      <button id="full-graph" class="full-graph" type="button">Full graph</button>
     </nav>
     <main class="workspace">
       <aside id="graph-controls" class="controls" aria-label="Graph controls">
@@ -381,6 +383,22 @@
       if (updateHash) writeAgentHash(agentId);
       renderActiveView();
       if (agentId) showAgentDetails(agentId); else showDefaultDetails();
+    }
+
+    function clearActivityFilters() {
+      for (const control of Object.values(activityFilters)) control.value = "";
+      writeAgentHash("");
+      selected = null;
+      hovered = null;
+      showDefaultDetails();
+    }
+
+    function resetGraphFilters() {
+      enabledLayers.clear();
+      for (const layer of graph.layers) enabledLayers.add(layer.id);
+      enabledEdges.clear();
+      for (const kind of edgeKinds) enabledEdges.add(kind);
+      for (const checkbox of document.querySelectorAll("#layer-filters input, #edge-filters input")) checkbox.checked = true;
     }
 
     function renderAgentView(events) {
@@ -822,10 +840,15 @@
       });
     }
     document.getElementById("clear-agent-filters").addEventListener("click", () => {
-      for (const control of Object.values(activityFilters)) control.value = "";
-      writeAgentHash("");
-      showDefaultDetails();
+      clearActivityFilters();
       renderActiveView();
+    });
+    document.getElementById("full-graph").addEventListener("click", () => {
+      clearActivityFilters();
+      resetGraphFilters();
+      setView("code");
+      fitView();
+      draw();
     });
     document.getElementById("controls-toggle").addEventListener("click", (event) => {
       const controls = document.getElementById("graph-controls");
