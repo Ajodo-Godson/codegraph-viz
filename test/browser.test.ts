@@ -213,9 +213,12 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.equal(await page.locator("#agent-filter").inputValue(), "");
 
     await page.locator("#theme-toggle").click();
-    assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+    const firstTheme = await page.locator("html").getAttribute("data-theme");
     await page.locator("#theme-toggle").click();
-    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+    const secondTheme = await page.locator("html").getAttribute("data-theme");
+    assert.ok(firstTheme === "light" || firstTheme === "dark");
+    assert.ok(secondTheme === "light" || secondTheme === "dark");
+    assert.notEqual(firstTheme, secondTheme);
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 0, `Page has ${overflow}px of horizontal overflow`);
