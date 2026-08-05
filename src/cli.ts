@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { generateVisualization } from "./app.ts";
 import { extractGraph } from "./extract.ts";
@@ -77,7 +77,8 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
     const options = parseArguments(args);
     if (options.help) { console.log(HELP); return 0; }
     if (options.version) {
-      const packagePath = new URL("../package.json", import.meta.url);
+      const sourcePackagePath = new URL("../package.json", import.meta.url);
+      const packagePath = existsSync(sourcePackagePath) ? sourcePackagePath : new URL("../../package.json", import.meta.url);
       console.log(JSON.parse(readFileSync(packagePath, "utf8")).version);
       return 0;
     }

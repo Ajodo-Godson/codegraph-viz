@@ -3,15 +3,38 @@
   "version": "1.0.0",
   "description": "Visualize CodeGraph indexes and multi-agent coding provenance",
   "bin": {
-    "codegraph-viz": "bin/codegraph-viz.ts",
-    "codegraph-viz-mcp": "bin/codegraph-viz-mcp.ts"
+    "codegraph-viz": "dist/bin/codegraph-viz.js",
+    "codegraph-viz-mcp": "dist/bin/codegraph-viz-mcp.js"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.ts",
+    "prepack": "npm run build",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"
   },
-  "keywords": [],
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ajodo-Godson/codegraph-viz.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ajodo-Godson/codegraph-viz/issues"
+  },
+  "homepage": "https://github.com/Ajodo-Godson/codegraph-viz#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "codegraph",
+    "visualization",
+    "mcp",
+    "agents"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",

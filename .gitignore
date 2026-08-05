@@ -1,4 +1,5 @@
 node_modules/
+dist/
 *.html
 !src/template.html
 playwright-report/
