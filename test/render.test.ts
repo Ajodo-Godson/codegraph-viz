@@ -133,4 +133,7 @@ test("supports clickable agent contributions and consistent filter navigation", 
   assert.match(html, /const reviewPaths = filtersActive\(\)/);
   assert.match(html, /activityFilters\.agent\.value = ""/);
   assert.match(html, /showDefaultDetails\(\)/);
+  assert.match(html, /id="full-graph"/);
+  assert.match(html, /function clearActivityFilters/);
+  assert.match(html, /setView\("code"\)/);
 });
