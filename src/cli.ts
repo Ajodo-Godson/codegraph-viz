@@ -7,6 +7,7 @@ import type { PrepareGraphOptions } from "./granularity.ts";
 import { openCodeGraph } from "./open.ts";
 import { ensureCodeGraphIndex, hasCodeGraphIndex } from "./setup.ts";
 import type { TraceProvider } from "./types.ts";
+import { startLiveVisualization } from "./watch.ts";
 
 export interface CliOptions extends PrepareGraphOptions {
   projectPath: string;
@@ -16,6 +17,8 @@ export interface CliOptions extends PrepareGraphOptions {
   help: boolean;
   version: boolean;
   initialize: boolean;
+  watch: boolean;
+  port: number;
   tracePaths: string[];
   autoTraces: boolean;
   providers: TraceProvider[];
@@ -32,6 +35,8 @@ Options:
   --provider <provider>     Discover codex or claude traces; repeatable
   --no-agent-traces         Disable automatic local trace discovery
   --init                    Initialize CodeGraph when its index is missing
+  --watch                   Serve and refresh a local live visualization
+  --port <number>           Live server port (default: 4173; 0 selects any port)
   --json                    Write extracted JSON to stdout instead of HTML
   --force                   Replace an existing output file
   -h, --help                Show help
@@ -44,7 +49,7 @@ function valueAfter(args: string[], index: number, option: string): string {
 }
 
 export function parseArguments(args: string[], cwd = process.cwd()): CliOptions {
-  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, initialize: false, filterPaths: [], tracePaths: [], autoTraces: true, providers: [] };
+  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, initialize: false, watch: false, port: 4173, filterPaths: [], tracePaths: [], autoTraces: true, providers: [] };
   let positional = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -60,6 +65,9 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
         break;
       case "--init":
         result.initialize = true;
+        break;
+      case "--watch":
+        result.watch = true;
         break;
       case "-h":
       case "--help":
@@ -86,6 +94,13 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
         index += 1;
         if (!Number.isInteger(value) || value < 1) throw new Error("--max-nodes must be a positive integer.");
         result.maxNodes = value;
+        break;
+      }
+      case "--port": {
+        const value = Number(valueAfter(args, index, argument));
+        index += 1;
+        if (!Number.isInteger(value) || value < 0 || value > 65_535) throw new Error("--port must be an integer from 0 to 65535.");
+        result.port = value;
         break;
       }
       case "--filter":
@@ -142,6 +157,24 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
       console.error("Initializing CodeGraph...");
       await ensureCodeGraphIndex(options.projectPath);
       console.error("CodeGraph index ready.");
+    }
+    if (options.watch && options.json) throw new Error("--watch cannot be combined with --json.");
+    if (options.watch) {
+      const live = await startLiveVisualization({
+        ...options,
+        onUpdate: (result) => console.log(`Updated: ${result.graph.provenance?.length ?? 0} provenance events`),
+        onError: (error) => console.error(`Live update failed: ${error.message}`)
+      });
+      console.log(`Live visualization: ${live.url}`);
+      console.log(`Offline snapshot: ${live.outputPath}`);
+      console.log("Watching for CodeGraph, Git, and agent trace changes. Press Ctrl+C to stop.");
+      await new Promise<void>((resolvePromise) => {
+        const stop = () => resolvePromise();
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+      });
+      await live.close();
+      return 0;
     }
     if (options.json) {
       const opened = openCodeGraph(options.projectPath);

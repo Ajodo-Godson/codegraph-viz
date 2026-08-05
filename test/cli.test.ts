@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -72,4 +72,34 @@ test("--json remains parseable when --init creates the index", async () => {
   assert.equal(JSON.parse(stdout).stats.fileCount, 1);
   assert.match(stderr, /Initializing CodeGraph/);
   assert.match(stderr, /CodeGraph index ready/);
+});
+
+test("--watch serves locally until terminated", { timeout: 15_000 }, async () => {
+  const fixture = await createCodeGraphProject({ populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 0 });
+  } });
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-cli-watch-"));
+  const outputPath = join(root, "map.html");
+  const child = spawn(process.execPath, [
+    "bin/codegraph-viz.ts", fixture.projectPath, "--watch", "--port", "0",
+    "--no-agent-traces", "-o", outputPath
+  ], { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
+  const exited = new Promise<number | null>((resolvePromise) => child.on("exit", resolvePromise));
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  try {
+    const url = await new Promise<string>((resolvePromise, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Timed out waiting for live URL. Output: ${stdout}`)), 10_000);
+      child.stdout.on("data", () => {
+        const match = stdout.match(/Live visualization: (http:\/\/127\.0\.0\.1:\d+\/)/);
+        if (match?.[1]) { clearTimeout(timeout); resolvePromise(match[1]); }
+      });
+      child.on("exit", (code) => { clearTimeout(timeout); reject(new Error(`Watch process exited early with ${String(code)}.`)); });
+    });
+    assert.match(await fetch(url).then((response) => response.text()), /EventSource/);
+  } finally {
+    child.kill("SIGTERM");
+  }
+  assert.equal(await exited, 0);
 });
