@@ -62,6 +62,10 @@ export interface NormalizeProvenanceOptions {
   sourceRef?: string;
 }
 
+export function provenanceEventKey(event: Pick<ProvenanceEvent, "provider" | "runId" | "id">): string {
+  return `${event.provider}\0${event.runId}\0${event.id}`;
+}
+
 export function normalizeProvenance(input: unknown, options: NormalizeProvenanceOptions = {}): ProvenanceEvent[] {
   const envelope = record(input);
   const rawEvents = Array.isArray(input) ? input : Array.isArray(envelope.events) ? envelope.events : [input];

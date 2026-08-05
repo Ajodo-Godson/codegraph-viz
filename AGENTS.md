@@ -193,11 +193,23 @@ from their local trace directories by default. Match sessions to the requested
 project, normalize supported tool events, deduplicate imports, and report scan
 diagnostics. `--provider` limits discovery and `--no-agent-traces` disables it.
 Explicit `--trace` files remain supported and are merged with discovered events.
+Event identity includes provider, run, and native event ID so concurrent runs
+cannot erase one another. Correlation references and UI filters use that same
+composite identity. Diagnostics count matched sessions even when they import no
+events, plus malformed, unsupported, incomplete, and skipped records, without
+retaining their sensitive contents.
 
 **M6. Git and change attribution.** Correlate agent edits with working-tree
 diffs, branches, commits, tests, and pull requests. Distinguish inspected,
 proposed, modified, tested, committed, reviewed, and merged states. Attribution
 requires recorded evidence and must never be guessed from timing alone.
+Each correlation records per-agent authoring event IDs and whether the evidence
+is an explicit edit or proposal. Review readiness uses working-tree files when
+present, otherwise the diff from the default branch. Historical changes stay
+visible outside readiness counts. Multiple recorded authors are informational;
+they become a concurrent conflict only when their recorded run intervals and
+file-authoring events overlap. Approved pull request evidence applies at branch
+level and is labeled as such rather than presented as file-specific review.
 
 **M7. Multi-agent views.** Add agent delegation, activity timeline, change,
 knowledge, and review views alongside the code graph. Surface overlapping edits,

@@ -102,6 +102,9 @@ export interface TraceDiscoveryDiagnostic {
   sessionsMatched: number;
   eventsImported: number;
   skippedFiles: number;
+  malformedRecords: number;
+  unsupportedRecords: number;
+  incompleteRecords: number;
   warnings: string[];
 }
 
@@ -134,6 +137,8 @@ export interface GitSnapshot {
   branch: string | null;
   head: string | null;
   changes: GitChange[];
+  branchBase?: string | null;
+  branchChanges?: GitCommitChange[];
   recentCommits: GitCommit[];
 }
 
@@ -172,6 +177,12 @@ export interface ChangeCorrelation {
   commitShas: string[];
   eventIds: string[];
   agentIds: string[];
+  attributions: Array<{
+    agentId: string;
+    eventIds: string[];
+    reasons: ("explicit_file_edit" | "explicit_edit_proposal")[];
+  }>;
+  attributionStatus: "attributed" | "unattributed" | "multiple_contributors" | "concurrent_conflict";
   symbolIds: string[];
   evidence: ("explicit_event_target" | "commit_membership")[];
   states: {
@@ -184,4 +195,6 @@ export interface ChangeCorrelation {
     prOpened: boolean;
   };
   overlappingAgents: boolean;
+  multipleContributors: boolean;
+  concurrentConflict: boolean;
 }

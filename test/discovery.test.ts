@@ -157,3 +157,63 @@ test("preserves normalized source order for discovered timestamp ties", async ()
   const result = await discoverAgentTraces({ projectPath: project, providers: ["codex"], roots: { codex: codexRoot } });
   assert.deepEqual(result.events.filter(({ kind }) => kind === "test_run").map(({ id }) => id), ["z-first", "a-second"]);
 });
+
+test("keeps reused native event ids across concurrent nested Codex runs", async () => {
+  const project = await mkdtemp(join(tmpdir(), "trace-concurrent-project-"));
+  const codexRoot = await mkdtemp(join(tmpdir(), "trace-concurrent-codex-"));
+  const sessions = [
+    { file: "parent.jsonl", run: "parent-run", agent: "/root/audit", path: "src/parent.ts" },
+    { file: "child.jsonl", run: "child-run", agent: "/root/audit/deep", path: "src/child.ts" }
+  ];
+  for (const session of sessions) {
+    await writeFile(join(codexRoot, session.file), [
+      { type: "session_meta", timestamp: "2026-08-04T12:00:00Z", payload: { id: session.run, cwd: project, agent_path: session.agent } },
+      { type: "response_item", timestamp: "2026-08-04T12:01:00Z", payload: {
+        type: "custom_tool_call", name: "exec", call_id: "shared-edit-id",
+        input: `await tools.apply_patch("*** Begin Patch\\n*** Update File: ${join(project, session.path)}\\n*** End Patch")`
+      } }
+    ].map((value) => JSON.stringify(value)).join("\n"));
+  }
+  const result = await discoverAgentTraces({ projectPath: project, providers: ["codex"], roots: { codex: codexRoot } });
+  const edits = result.events.filter(({ kind }) => kind === "file_edited");
+  assert.deepEqual(edits.map(({ runId, agentId, parentAgentId, target }) => ({ runId, agentId, parentAgentId, path: target?.path })), [
+    { runId: "child-run", agentId: "/root/audit/deep", parentAgentId: "/root/audit", path: "src/child.ts" },
+    { runId: "parent-run", agentId: "/root/audit", parentAgentId: "root", path: "src/parent.ts" }
+  ]);
+});
+
+test("reports malformed, unsupported, and incomplete provider records", async () => {
+  const project = await mkdtemp(join(tmpdir(), "trace-diagnostic-project-"));
+  const claudeRoot = await mkdtemp(join(tmpdir(), "trace-diagnostic-claude-"));
+  await writeFile(join(claudeRoot, "diagnostic.jsonl"), [
+    JSON.stringify({ type: "assistant", timestamp: "2026-08-04T12:00:00Z", sessionId: "run", cwd: project, message: { content: [
+      { type: "tool_use", id: "missing-path", name: "Edit", input: { new_string: "private" } },
+      { type: "tool_use", id: "future-tool", name: "FutureTool", input: { secret: "private" } }
+    ] } }),
+    "{not-json"
+  ].join("\n"));
+  const result = await discoverAgentTraces({ projectPath: project, providers: ["claude"], roots: { claude: claudeRoot } });
+  assert.deepEqual(result.diagnostics[0], {
+    provider: "claude", filesScanned: 1, sessionsMatched: 1, eventsImported: 2, skippedFiles: 0,
+    malformedRecords: 1, unsupportedRecords: 1, incompleteRecords: 1,
+    warnings: ["diagnostic.jsonl: 1 malformed record, 1 unsupported tool record, 1 incomplete tool record"]
+  });
+  assert.doesNotMatch(JSON.stringify(result), /private|FutureTool/);
+});
+
+test("counts matched Codex sessions even when no supported event imports", async () => {
+  const project = await mkdtemp(join(tmpdir(), "trace-empty-diagnostic-project-"));
+  const codexRoot = await mkdtemp(join(tmpdir(), "trace-empty-diagnostic-codex-"));
+  await writeFile(join(codexRoot, "unsupported.jsonl"), [
+    JSON.stringify({ type: "session_meta", payload: { id: "run", cwd: project } }),
+    JSON.stringify({ type: "response_item", timestamp: "2026-08-04T12:00:00Z", payload: { type: "function_call", name: "future_tool", call_id: "future", arguments: "{}" } }),
+    "{invalid"
+  ].join("\n"));
+  const result = await discoverAgentTraces({ projectPath: project, providers: ["codex"], roots: { codex: codexRoot } });
+  assert.equal(result.events.length, 0);
+  assert.deepEqual(result.diagnostics[0], {
+    provider: "codex", filesScanned: 1, sessionsMatched: 1, eventsImported: 0, skippedFiles: 0,
+    malformedRecords: 1, unsupportedRecords: 1, incompleteRecords: 0,
+    warnings: ["unsupported.jsonl: 1 malformed record, 1 unsupported tool record"]
+  });
+});

@@ -31,10 +31,17 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-function parseLines(content: string): JsonRecord[] {
-  return content.split(/\r?\n/).filter(Boolean).flatMap((line) => {
-    try { return [record(JSON.parse(line))]; } catch { return []; }
-  });
+function parseLines(content: string): { records: JsonRecord[]; malformed: number } {
+  const records: JsonRecord[] = [];
+  let malformed = 0;
+  for (const line of content.split(/\r?\n/).filter(Boolean)) {
+    try {
+      const parsed = JSON.parse(line);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) malformed += 1;
+      else records.push(parsed as JsonRecord);
+    } catch { malformed += 1; }
+  }
+  return { records, malformed };
 }
 
 function safeSummary(value: unknown): string | null {
@@ -56,6 +63,14 @@ function cwdMatches(value: unknown, projectPath: string): boolean {
   if (!cwd) return false;
   const resolved = resolve(cwd);
   return resolved === projectPath || resolved.startsWith(`${projectPath}${sep}`);
+}
+
+function traceMatches(provider: TraceProvider, records: JsonRecord[], projectPath: string): boolean {
+  if (provider === "claude") return records.some((item) => cwdMatches(item.cwd, projectPath));
+  return records.some((item) => {
+    if (item.type !== "session_meta" && item.type !== "turn_context") return false;
+    return cwdMatches(record(item.payload).cwd, projectPath);
+  });
 }
 
 function commandKind(command: string): string {
@@ -92,6 +107,61 @@ function deliveryEvent(name: string, input: JsonRecord, base: JsonRecord): JsonR
     return rawEvent(base, { kind: "review_received", target: { type: "pull_request", ...(number ? { value: number } : {}) }, summary: "Received review recorded by agent tool" });
   }
   return null;
+}
+
+function deliveryTool(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return [
+    "commit_created", "create_commit", "pr_opened", "create_pull_request",
+    "pull_request_opened", "review_received", "pull_request_review_received"
+  ].some((value) => normalized === value || normalized.endsWith(`__${value}`));
+}
+
+function traceQuality(provider: TraceProvider, records: JsonRecord[], projectPath: string): { unsupported: number; incomplete: number } {
+  let unsupported = 0;
+  let incomplete = 0;
+  if (provider === "codex") {
+    for (const item of records.filter((entry) => entry.type === "response_item")) {
+      const payload = record(item.payload);
+      if (payload.type === "custom_tool_call") {
+        const input = text(payload.input);
+        if (payload.name !== "exec") unsupported += 1;
+        else if (!input) incomplete += 1;
+        else if (!["apply_patch", "exec_command", "view_image"].some((name) => input.includes(name))) unsupported += 1;
+        continue;
+      }
+      if (payload.type !== "function_call") continue;
+      const name = text(payload.name) ?? "";
+      const input = parseArguments(payload.arguments);
+      if (deliveryTool(name)) continue;
+      if (["exec_command", "shell_command"].includes(name)) { if (!text(input.cmd) && !text(input.command)) incomplete += 1; }
+      else if (name === "view_image") { if (!projectRelative(input.path, projectPath)) incomplete += 1; }
+      else if (name === "spawn_agent") { if (!text(input.task_name)) incomplete += 1; }
+      else if (name === "send_message") { if (!text(input.target)) incomplete += 1; }
+      else unsupported += 1;
+    }
+    return { unsupported, incomplete };
+  }
+  for (const item of records.filter((entry) => cwdMatches(entry.cwd, projectPath) && entry.type === "assistant")) {
+    const content = record(item.message).content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = record(value);
+      if (block.type !== "tool_use") continue;
+      const name = text(block.name) ?? "";
+      const input = record(block.input);
+      if (deliveryTool(name) || name === "Agent") continue;
+      if (["Read", "Edit", "Write"].includes(name)) { if (!projectRelative(input.file_path, projectPath)) incomplete += 1; }
+      else if (name === "Bash") { if (!text(input.command)) incomplete += 1; }
+      else if (name === "SendMessage") { if (!text(input.recipient) && !text(input.to)) incomplete += 1; }
+      else unsupported += 1;
+    }
+  }
+  return { unsupported, incomplete };
+}
+
+function countLabel(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
 function codexWrapperEvents(payload: JsonRecord, timestamp: string, runId: string, projectPath: string): JsonRecord[] {
@@ -315,15 +385,34 @@ export async function discoverAgentTraces(options: DiscoverTraceOptions): Promis
   for (const provider of providers) {
     const root = options.roots?.[provider] ?? defaults[provider];
     const files = await traceFiles(root);
-    const diagnostic: TraceDiscoveryDiagnostic = { provider, filesScanned: files.length, sessionsMatched: 0, eventsImported: 0, skippedFiles: 0, warnings: [] };
+    const diagnostic: TraceDiscoveryDiagnostic = {
+      provider, filesScanned: files.length, sessionsMatched: 0, eventsImported: 0, skippedFiles: 0,
+      malformedRecords: 0, unsupportedRecords: 0, incompleteRecords: 0, warnings: []
+    };
     for (const path of files) {
       try {
         const info = await stat(path);
         if (info.size > MAX_TRACE_BYTES) { diagnostic.skippedFiles += 1; diagnostic.warnings.push(`Skipped oversized trace ${basename(path)}`); continue; }
-        const records = parseLines(await readFile(path, "utf8"));
+        const parsed = parseLines(await readFile(path, "utf8"));
+        const records = parsed.records;
         const sourceRef = `${provider}:${basename(path)}`;
-        const events = provider === "codex" ? adaptCodexTrace(records, projectPath, sourceRef) : adaptClaudeTrace(records, projectPath, sourceRef);
-        if (events.length) { diagnostic.sessionsMatched += 1; diagnostic.eventsImported += events.length; allEvents.push(...events); }
+        const matched = traceMatches(provider, records, projectPath);
+        const events = matched ? (provider === "codex" ? adaptCodexTrace(records, projectPath, sourceRef) : adaptClaudeTrace(records, projectPath, sourceRef)) : [];
+        if (matched) {
+          const quality = traceQuality(provider, records, projectPath);
+          diagnostic.sessionsMatched += 1;
+          diagnostic.eventsImported += events.length;
+          diagnostic.malformedRecords += parsed.malformed;
+          diagnostic.unsupportedRecords += quality.unsupported;
+          diagnostic.incompleteRecords += quality.incomplete;
+          const issues = [
+            ...(parsed.malformed ? [countLabel(parsed.malformed, "malformed record")] : []),
+            ...(quality.unsupported ? [countLabel(quality.unsupported, "unsupported tool record")] : []),
+            ...(quality.incomplete ? [countLabel(quality.incomplete, "incomplete tool record")] : [])
+          ];
+          if (issues.length) diagnostic.warnings.push(`${basename(path)}: ${issues.join(", ")}`);
+          if (events.length) allEvents.push(...events);
+        }
       } catch (error) {
         diagnostic.skippedFiles += 1;
         diagnostic.warnings.push(`Skipped ${basename(path)}: ${error instanceof Error ? error.message : String(error)}`);
@@ -331,7 +420,7 @@ export async function discoverAgentTraces(options: DiscoverTraceOptions): Promis
     }
     diagnostics.push(diagnostic);
   }
-  const deduplicated = [...new Map(allEvents.map((event) => [`${event.provider}\0${event.id}`, event])).values()]
+  const deduplicated = [...new Map(allEvents.map((event) => [`${event.provider}\0${event.runId}\0${event.id}`, event])).values()]
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
   return { events: deduplicated, diagnostics };
 }

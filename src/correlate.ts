@@ -1,6 +1,7 @@
 import type {
   ChangeCorrelation, GitSnapshot, GraphSymbol, ProvenanceEvent
 } from "./types.ts";
+import { provenanceEventKey } from "./provenance.ts";
 
 const AUTHORING_KINDS = new Set(["edit_proposed", "file_edited"]);
 const RUN_EVIDENCE_KINDS = new Set(["test_run", "commit_created", "pr_opened", "review_received"]);
@@ -52,8 +53,12 @@ function isUntargeted(event: ProvenanceEvent): boolean {
   return !event.target?.path && metadataPaths(event).length === 0;
 }
 
+function runKey(event: ProvenanceEvent): string {
+  return `${event.provider}\0${event.runId}`;
+}
+
 function runAgentKey(event: ProvenanceEvent): string {
-  return `${event.runId}\0${event.agentId}`;
+  return `${runKey(event)}\0${event.agentId}`;
 }
 
 function runAgentTaskKey(event: ProvenanceEvent): string {
@@ -74,6 +79,15 @@ export function correlateChanges(
   symbols: GraphSymbol[]
 ): ChangeCorrelation[] {
   const uniqueEvents = deduplicateCorrelationEvents(events);
+  const runBounds = new Map<string, { start: string; end: string }>();
+  for (const event of uniqueEvents) {
+    const key = runKey(event);
+    const current = runBounds.get(key);
+    runBounds.set(key, {
+      start: !current || event.timestamp < current.start ? event.timestamp : current.start,
+      end: !current || event.timestamp > current.end ? event.timestamp : current.end
+    });
+  }
   const symbolsByPath = new Map<string, GraphSymbol[]>();
   for (const symbol of symbols) {
     const entries = symbolsByPath.get(symbol.filePath) ?? [];
@@ -117,16 +131,38 @@ export function correlateChanges(
       ...(runEvidenceByAgent.get(runAgentKey(authored)) ?? []),
       ...(authored.taskId ? runEvidenceByTask.get(runAgentTaskKey(authored)) ?? [] : [])
     ]);
-    const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
+    const related = [...new Map([...targeted, ...runEvidence].map((event) => [provenanceEventKey(event), event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
+    const multipleContributors = agentIds.length > 1;
+    const concurrentConflict = authoring.some((left, index) => authoring.slice(index + 1).some((right) => {
+      if (left.agentId === right.agentId) return false;
+      if (runKey(left) === runKey(right)) return true;
+      const leftRun = runBounds.get(runKey(left));
+      const rightRun = runBounds.get(runKey(right));
+      return Boolean(leftRun && rightRun &&
+        left.timestamp >= rightRun.start && left.timestamp <= rightRun.end &&
+        right.timestamp >= leftRun.start && right.timestamp <= leftRun.end);
+    }));
+    const attributions = agentIds.map((agentId) => {
+      const authored = authoring.filter((event) => event.agentId === agentId);
+      return {
+        agentId,
+        eventIds: authored.map(provenanceEventKey).sort(),
+        reasons: [...new Set(authored.map((event) => event.kind === "file_edited"
+          ? "explicit_file_edit" as const
+          : "explicit_edit_proposal" as const))].sort()
+      };
+    });
     const fileSymbols = symbolsByPath.get(path) ?? [];
     const symbolIds = [...new Set(related.flatMap((event) => fileSymbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();
     const kinds = new Set(related.map((event) => event.kind));
     return {
       path,
       commitShas: commitsByPath.get(path) ?? [],
-      eventIds: related.map((event) => event.id).sort(),
+      eventIds: related.map(provenanceEventKey).sort(),
       agentIds,
+      attributions,
+      attributionStatus: concurrentConflict ? "concurrent_conflict" : multipleContributors ? "multiple_contributors" : agentIds.length === 1 ? "attributed" : "unattributed",
       symbolIds,
       evidence: [
         ...(related.length ? ["explicit_event_target" as const] : []),
@@ -141,7 +177,9 @@ export function correlateChanges(
         reviewed: kinds.has("review_received"),
         prOpened: kinds.has("pr_opened")
       },
-      overlappingAgents: agentIds.length > 1
+      overlappingAgents: concurrentConflict,
+      multipleContributors,
+      concurrentConflict
     };
   });
 }

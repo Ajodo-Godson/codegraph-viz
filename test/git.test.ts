@@ -56,6 +56,36 @@ test("retains changed-file evidence for recent commits after the working tree is
   ]);
 });
 
+test("reports changes since the current branch diverged from the default branch", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "complete main work");
+  git(path, "switch", "-c", "feature/scope");
+  await writeFile(join(path, "app.ts"), "export const value = 3;\n");
+  git(path, "add", "--", "app.ts");
+  git(path, "commit", "-m", "feature change");
+
+  const snapshot = inspectGit(path);
+  assert.equal(snapshot.branchBase, "main");
+  assert.deepEqual(snapshot.branchChanges, [{ path: "app.ts", additions: 1, deletions: 1 }]);
+});
+
+test("skips branch change collection when the working tree has changes", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "complete main work");
+  git(path, "switch", "-c", "feature/scope");
+  await writeFile(join(path, "app.ts"), "export const value = 3;\n");
+  git(path, "add", "--", "app.ts");
+  git(path, "commit", "-m", "feature change");
+  await writeFile(join(path, "app.ts"), "export const value = 4;\n");
+
+  const snapshot = inspectGit(path);
+  assert.deepEqual(snapshot.changes.map((change) => change.path), ["app.ts"]);
+  assert.equal(snapshot.branchBase, null);
+  assert.deepEqual(snapshot.branchChanges, []);
+});
+
 test("attributes changes only from explicit evidence and detects overlaps", async () => {
   const path = await repository();
   const events = normalizeProvenance([
@@ -104,8 +134,8 @@ test("applies explicit run-level delivery evidence to files authored in that run
   const app = correlateChanges(inspectGit(path), events, []).find((item) => item.path === "app.ts");
   assert.equal(app?.states.tested, true);
   assert.equal(app?.states.reviewed, true);
-  assert.ok(app?.eventIds.includes("test"));
-  assert.ok(!app?.eventIds.includes("other-test"));
+  assert.ok(app?.eventIds.includes("generic\0run-a\0test"));
+  assert.ok(!app?.eventIds.includes("generic\0run-b\0other-test"));
 });
 
 test("preserves unusual and renamed paths with NUL-delimited Git output", async () => {

@@ -55,6 +55,11 @@ function browserGraphFixture(): PreparedGraph {
       totalNodes: 2, shownNodes: 2, droppedNodes: 0,
       totalLinks: 1, shownLinks: 1, droppedLinks: 0, pruned: false
     },
+    traceDiagnostics: [{
+      provider: "codex", filesScanned: 2, sessionsMatched: 1, eventsImported: 4, skippedFiles: 0,
+      malformedRecords: 0, unsupportedRecords: 1, incompleteRecords: 1,
+      warnings: ["fixture: unsupported and incomplete records"]
+    }],
     provenance: [
       {
         id: "root-start", timestamp: "2026-08-04T12:00:00.000Z", provider: "codex",
@@ -84,6 +89,7 @@ function browserGraphFixture(): PreparedGraph {
     ],
     git: {
       root: "/fixture", branch: "feature/browser-test", head: "abc123",
+      branchBase: "main", branchChanges: [],
       changes: [
         {
           path: "src/alpha.ts", indexStatus: " ", worktreeStatus: "M", staged: false,
@@ -111,8 +117,10 @@ function browserGraphFixture(): PreparedGraph {
     },
     correlations: [
       {
-        path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
+        path: "src/alpha.ts", commitShas: [], eventIds: ["codex\0run-1\0edit", "codex\0run-1\0knowledge"],
         agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
+        attributions: [{ agentId: "/root/worker", eventIds: ["codex\0run-1\0edit"], reasons: ["explicit_file_edit"] }],
+        attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: true, tested: false,
@@ -122,6 +130,8 @@ function browserGraphFixture(): PreparedGraph {
       {
         path: "test/browser.test.ts", commitShas: [], eventIds: [],
         agentIds: ["/root/worker"], symbolIds: [], evidence: ["explicit_event_target"],
+        attributions: [{ agentId: "/root/worker", eventIds: ["fixture-edit"], reasons: ["explicit_file_edit"] }],
+        attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: false, tested: false,
@@ -184,6 +194,8 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     const filteredChanges = await page.locator("#secondary-view").innerText();
     assert.match(filteredChanges, /1 working-tree and 0 recent committed changes/);
     assert.match(filteredChanges, /src\/alpha\.ts/);
+    assert.match(filteredChanges, /\/root\/worker: explicit file edit \(1 event\)/);
+    assert.match(filteredChanges, /attributed/);
     assert.doesNotMatch(filteredChanges, /src\/beta\.ts/);
 
     await selectView(page, "review");
@@ -191,15 +203,20 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.match(filteredReview, /1\s+Untested/);
     assert.match(filteredReview, /1\s+Unreviewed/);
     assert.match(filteredReview, /1\s+Uncommitted/);
+    assert.match(filteredReview, /Active scope: 2 working-tree files/);
     assert.match(filteredReview, /src\/alpha\.ts/);
     assert.match(filteredReview, /Pull request #12/);
     assert.match(filteredReview, /2 checks \| 2 failing \| 1 reviews \| 2 unresolved threads/);
     assert.match(filteredReview, /Some GitHub evidence is unavailable/);
+    assert.match(filteredReview, /Trace evidence diagnostics/);
+    assert.match(filteredReview, /codex: 0 malformed \| 1 unsupported \| 1 incomplete \| 0 skipped/);
     assert.doesNotMatch(filteredReview, /src\/beta\.ts/);
 
     await page.locator("#detail-panel").getByRole("button", { name: "src/alpha.ts" }).click();
     assert.equal(await page.locator('.view-tab[data-view="code"]').getAttribute("aria-selected"), "true");
     assert.match(await page.locator("#detail-panel").innerText(), /alpha\.ts/);
+    assert.match(await page.locator("#detail-panel").innerText(), /Attribution evidence/i);
+    assert.match(await page.locator("#detail-panel").innerText(), /explicit file edit/);
     assert.equal(new URL(page.url()).hash, "#agent=%2Froot%2Fworker");
     await page.locator("#layer-filters input").first().uncheck();
     await page.locator("#edge-filters input").first().uncheck();
@@ -271,6 +288,61 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.ok(narrowOverflow <= 0, `Narrow page has ${narrowOverflow}px of horizontal overflow`);
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(externalRequests, []);
+  } finally {
+    await browser?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("review uses current branch scope and clearly applies PR-level approval", { timeout: 30_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-branch-review-"));
+  const outputPath = join(directory, "map.html");
+  const graph = browserGraphFixture();
+  graph.git!.changes = [];
+  graph.git!.branchBase = "main";
+  graph.git!.branchChanges = [{ path: "src/alpha.ts", additions: 2, deletions: 1 }];
+  graph.github!.pullRequest!.reviewDecision = "APPROVED";
+  await writeFile(outputPath, renderGraph(graph, { generatedAt: "2026-08-04T14:00:00Z" }));
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ reducedMotion: "reduce" });
+    await page.goto(`file://${outputPath}`);
+    await selectView(page, "review");
+    const review = await page.locator("#secondary-view").innerText();
+    assert.match(review, /Active scope: 1 current-branch file since main/);
+    assert.match(review, /PR-level approval applies to the current-branch files/);
+    assert.match(review, /0\s+Unreviewed/);
+  } finally {
+    await browser?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("run filters keep reused native event ids isolated", { timeout: 30_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-run-filter-"));
+  const outputPath = join(directory, "map.html");
+  const graph = browserGraphFixture();
+  const base = graph.provenance![2]!;
+  graph.provenance = [
+    { ...base, id: "shared", runId: "run-a", agentId: "agent-a", target: { type: "file", path: "src/alpha.ts" } },
+    { ...base, id: "shared", runId: "run-b", agentId: "agent-b", target: { type: "file", path: "src/beta.ts" } }
+  ];
+  graph.correlations = [
+    { ...graph.correlations![0]!, path: "src/alpha.ts", eventIds: ["codex\0run-a\0shared"], agentIds: ["agent-a"], attributions: [{ agentId: "agent-a", eventIds: ["codex\0run-a\0shared"], reasons: ["explicit_file_edit"] }] },
+    { ...graph.correlations![0]!, path: "src/beta.ts", eventIds: ["codex\0run-b\0shared"], agentIds: ["agent-b"], attributions: [{ agentId: "agent-b", eventIds: ["codex\0run-b\0shared"], reasons: ["explicit_file_edit"] }] }
+  ];
+  await writeFile(outputPath, renderGraph(graph));
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ reducedMotion: "reduce" });
+    await page.goto(`file://${outputPath}`);
+    await page.locator("#run-filter").selectOption("run-a");
+    await selectView(page, "changes");
+    const changes = await page.locator("#secondary-view").innerText();
+    assert.match(changes, /src\/alpha\.ts/);
+    assert.doesNotMatch(changes, /src\/beta\.ts/);
   } finally {
     await browser?.close();
     await rm(directory, { recursive: true, force: true });

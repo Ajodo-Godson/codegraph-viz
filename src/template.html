@@ -192,7 +192,7 @@
     const correlations = graph.correlations || [];
     const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
     const githubEvidence = graph.github || { pullRequest: null, diagnostics: [] };
-    const eventById = new Map(provenance.map((event) => [event.id, event]));
+    const traceDiagnostics = graph.traceDiagnostics || [];
     const contributionPathsByAgent = new Map();
     const activityFilters = {
       run: document.getElementById("run-filter"),
@@ -302,7 +302,7 @@
 
     function filteredCorrelations(events) {
       if (!filtersActive()) return correlations;
-      const ids = new Set(events.map((event) => event.id));
+      const ids = new Set(events.map((event) => `${event.provider}\0${event.runId}\0${event.id}`));
       return correlations.filter((item) => item.eventIds.some((id) => ids.has(id)));
     }
 
@@ -327,6 +327,16 @@
     function targetText(event) {
       if (!event.target) return "No target";
       return event.target.path || event.target.symbolId || event.target.value || event.target.type;
+    }
+
+    function attributionReasonLabel(reason) {
+      return reason === "explicit_file_edit" ? "explicit file edit" :
+        reason === "explicit_edit_proposal" ? "explicit edit proposal" : reason;
+    }
+
+    function attributionSummary(attribution) {
+      const reasons = (attribution.reasons || []).map(attributionReasonLabel).join(", ");
+      return `${attribution.agentId}: ${reasons || "recorded attribution"} (${attribution.eventIds.length} event${attribution.eventIds.length === 1 ? "" : "s"})`;
     }
 
     function agentContributionPaths(agentId) {
@@ -366,6 +376,8 @@
           showNode(node);
         });
         detailPanel.append(button);
+        const attribution = correlations.find((item) => item.path === path)?.attributions?.find((item) => item.agentId === agentId);
+        if (attribution) detailPanel.append(element("p", attributionSummary(attribution), "path"));
       }
       detailPanel.append(element("h2", `Knowledge (${knowledge.length})`));
       for (const event of knowledge.slice(0, 20)) detailPanel.append(element("p", event.summary || "Knowledge report", "path"));
@@ -497,12 +509,16 @@
           : (change.staged ? "staged" : "not staged");
         card.append(element("p", `+${change.additions ?? "?"} / -${change.deletions ?? "?"} | ${changeState}`));
         card.append(element("p", correlation?.agentIds.length ? `Agents: ${correlation.agentIds.join(", ")}` : "No agent attribution evidence", correlation?.agentIds.length ? "" : "empty"));
+        for (const attribution of correlation?.attributions || []) card.append(element("p", attributionSummary(attribution), "path"));
+        const attributionStatus = correlation?.attributionStatus === "concurrent_conflict" ? "concurrent conflict" :
+          correlation?.attributionStatus === "multiple_contributors" ? "multiple contributors" :
+          correlation?.attributionStatus === "unattributed" || !correlation ? "incomplete attribution" : "attributed";
         card.append(badges([
           change.source,
+          attributionStatus,
           ...(correlation ? Object.entries(correlation.states).filter(([, enabled]) => enabled).map(([name]) => name) : []),
-          ...(correlation?.overlappingAgents ? ["overlap"] : []),
           ...(correlation?.evidence || [])
-        ], new Set(["overlap"])));
+        ], new Set(["concurrent conflict", "incomplete attribution"])));
         grid.append(card);
       }
       secondaryView.append(grid);
@@ -530,18 +546,26 @@
     }
 
     function renderReviewView(events) {
-      const visible = filteredCorrelations(events);
       const workingChanges = gitSnapshot.changes || [];
-      const committedChanges = (gitSnapshot.recentCommits || []).flatMap((commit) => commit.changes || commit.files || []);
-      const changedPaths = [...new Set([...workingChanges, ...committedChanges].map((change) => typeof change === "string" ? change : change.path).filter(Boolean))];
+      const branchChanges = gitSnapshot.branchChanges || [];
+      const scope = workingChanges.length ? "working_tree" : branchChanges.length ? "current_branch" : "none";
+      const scopedChanges = scope === "working_tree" ? workingChanges : scope === "current_branch" ? branchChanges : [];
+      const changedPaths = [...new Set(scopedChanges.map((change) => typeof change === "string" ? change : change.path).filter(Boolean))];
+      const changedPathSet = new Set(changedPaths);
+      const visible = filteredCorrelations(events).filter((item) => changedPathSet.has(item.path));
       const reviewPaths = filtersActive() ? visible.map((item) => item.path) : changedPaths;
       const unattributed = reviewPaths.filter((path) => !correlations.some((item) => item.path === path && item.agentIds.length));
-      const overlaps = visible.filter((item) => item.overlappingAgents);
+      const contributors = visible.filter((item) => item.multipleContributors);
+      const conflicts = visible.filter((item) => item.concurrentConflict);
       const untested = visible.filter((item) => item.states.modified && !item.states.tested);
-      const unreviewed = visible.filter((item) => item.states.modified && !item.states.reviewed);
+      const prApproved = scope === "current_branch" && githubEvidence.pullRequest?.reviewDecision === "APPROVED";
+      const unreviewed = visible.filter((item) => item.states.modified && !item.states.reviewed && !prApproved);
       const uncommitted = visible.filter((item) => item.states.modified && !item.states.committed);
       viewHeader("Review readiness", "Evidence-based checks for incomplete agent work");
-      secondaryView.append(element("p", "Review status requires explicit test, commit, and review events. Missing trace evidence is not treated as verification.", "view-summary"));
+      const scopeText = scope === "working_tree" ? `${changedPaths.length} working-tree file${changedPaths.length === 1 ? "" : "s"}` :
+        scope === "current_branch" ? `${changedPaths.length} current-branch file${changedPaths.length === 1 ? "" : "s"} since ${gitSnapshot.branchBase || "the default branch"}` : "no active changes";
+      secondaryView.append(element("p", `Active scope: ${scopeText}. Historical commits and traces are excluded from readiness counts.`, "view-summary"));
+      secondaryView.append(element("p", "Review status requires explicit trace evidence or clearly labeled PR-level approval. Missing evidence is not treated as verification.", "view-summary"));
       const pullRequest = githubEvidence.pullRequest;
       if (pullRequest) {
         const card = element("article", undefined, "card");
@@ -556,14 +580,23 @@
       } else {
         secondaryView.append(element("p", githubEvidence.diagnostics?.[0] || "No GitHub pull request evidence is available for this branch.", "empty"));
       }
+      if (prApproved) secondaryView.append(element("p", "PR-level approval applies to the current-branch files. This is branch-level evidence, not proof that each file received a separate review comment.", "view-summary"));
+      const traceIssues = traceDiagnostics.filter((item) => item.malformedRecords || item.unsupportedRecords || item.incompleteRecords || item.skippedFiles);
+      if (traceIssues.length) {
+        const card = element("article", undefined, "card");
+        card.append(element("h3", "Trace evidence diagnostics"));
+        for (const item of traceIssues) card.append(element("p", `${item.provider}: ${item.malformedRecords || 0} malformed | ${item.unsupportedRecords || 0} unsupported | ${item.incompleteRecords || 0} incomplete | ${item.skippedFiles || 0} skipped`, "path"));
+        card.append(element("p", "These records were not used as positive authorship or verification evidence.", "empty"));
+        secondaryView.append(card);
+      }
       const metrics = element("div", undefined, "metrics");
-      for (const [label, value] of [["Unattributed", unattributed.length], ["Overlaps", overlaps.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
+      for (const [label, value] of [["Unattributed", unattributed.length], ["Multiple contributors", contributors.length], ["Concurrent conflicts", conflicts.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
         const metric = element("div", undefined, "metric");
         metric.append(element("strong", String(value)), element("span", label));
         metrics.append(metric);
       }
       secondaryView.append(metrics);
-      const flagged = [...new Set([...unattributed, ...overlaps.map((item) => item.path), ...untested.map((item) => item.path), ...unreviewed.map((item) => item.path), ...uncommitted.map((item) => item.path)])].sort();
+      const flagged = [...new Set([...unattributed, ...conflicts.map((item) => item.path), ...untested.map((item) => item.path), ...unreviewed.map((item) => item.path), ...uncommitted.map((item) => item.path)])].sort();
       const reviewEvents = events.filter((event) => ["test_run", "commit_created", "review_received", "pr_opened"].includes(event.kind));
       if (flagged.length === 0 && changedPaths.length === 0 && visible.length === 0 && reviewEvents.length === 0) {
         secondaryView.append(element("p", "No review evidence or changed files are available. Import agent traces and Git history to assess readiness.", "empty"));
@@ -573,8 +606,8 @@
         for (const path of flagged) {
           const item = correlations.find((correlation) => correlation.path === path);
           const risks = [];
-          if (!item?.agentIds.length) risks.push("unattributed");
-          if (item?.overlappingAgents) risks.push("overlap");
+          if (!item?.agentIds.length) risks.push("incomplete attribution");
+          if (item?.concurrentConflict) risks.push("concurrent conflict");
           if (item?.states.modified && !item.states.tested) risks.push("untested");
           if (item?.states.modified && !item.states.reviewed) risks.push("unreviewed");
           if (item?.states.modified && !item.states.committed) risks.push("uncommitted");
@@ -777,6 +810,14 @@
       detailPanel.append(element("div", node.label, "title"));
       detailPanel.append(element("div", node.path, "path"));
       addFacts([["Type", node.type], ["Layer", node.layer], ["Files", node.fileCount], ["Symbols", node.symbolCount], ["Weighted degree", node.degree]]);
+      const correlation = node.type === "file" ? correlations.find((item) => item.path === node.path) : null;
+      if (correlation) {
+        detailPanel.append(element("h2", "Attribution evidence"));
+        detailPanel.append(element("p", correlation.attributionStatus === "concurrent_conflict" ? "Concurrent conflict: multiple agents recorded authoring evidence while their runs overlapped." :
+          correlation.attributionStatus === "multiple_contributors" ? "Multiple contributors recorded authoring evidence at different times." :
+          correlation.attributionStatus === "unattributed" ? "Incomplete attribution: no recorded authoring evidence." : "Attributed from explicit authoring evidence.", "path"));
+        for (const attribution of correlation.attributions || []) detailPanel.append(element("p", attributionSummary(attribution), "path"));
+      }
       const matchedSymbols = graph.symbols.filter((symbol) => node.type === "directory" ? directoryOf(symbol.filePath) === node.id : symbol.filePath === node.path);
       detailPanel.append(element("h2", `Symbols (${matchedSymbols.length})`));
       if (matchedSymbols.length === 0) detailPanel.append(element("p", "No indexed symbols", "empty"));
