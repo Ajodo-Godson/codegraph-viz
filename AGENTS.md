@@ -232,10 +232,11 @@ viewing, but immutable offline snapshots remain the default.
 **M10. Simple setup.** Match CodeGraph's low-friction installation model. A
 repository-owned `install.sh` installs user-local CLI and MCP launchers without
 requiring a checkout. Running `codegraph-viz` inside an indexed project remains
-the complete default workflow. Missing indexes point users to `codegraph
-install` and `codegraph init`, and the installer prints direct Codex and Claude
-MCP registration commands. Script-based uninstall removes only codegraph-viz
-files and launchers.
+the complete default workflow. In an interactive terminal, a missing index
+prompts before running `codegraph init`; `--init` provides explicit consent for
+non-interactive use. The installer prints direct Codex and Claude MCP
+registration commands. Script-based uninstall removes only codegraph-viz files
+and launchers.
 
 Implementation status: M0 through M10 and M5.1 are complete. Provider traces are
 discovered automatically from local Codex and Claude sessions or imported with
