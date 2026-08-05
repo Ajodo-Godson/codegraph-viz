@@ -43,3 +43,21 @@ test("installer uninstall removes only its installation and launchers", async ()
   await assert.rejects(stat(join(binDir, "codegraph-viz-mcp")));
   assert.ok(await stat(binDir));
 });
+
+test("installer refuses unsafe uninstall directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-unsafe-uninstall-"));
+  const installDir = join(root, "install");
+  const binDir = join(root, "bin");
+  await mkdir(installDir);
+  await mkdir(binDir);
+
+  await assert.rejects(execute("sh", [script.pathname, "--uninstall"], {
+    env: { ...process.env, CODEGRAPH_VIZ_INSTALL_DIR: "/", CODEGRAPH_VIZ_BIN_DIR: binDir }
+  }), /unsafe install directory/);
+  await assert.rejects(execute("sh", [script.pathname, "--uninstall"], {
+    env: { ...process.env, CODEGRAPH_VIZ_INSTALL_DIR: installDir, CODEGRAPH_VIZ_BIN_DIR: "/" }
+  }), /unsafe launcher directory/);
+
+  assert.ok(await stat(installDir));
+  assert.ok(await stat(binDir));
+});

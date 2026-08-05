@@ -23,6 +23,8 @@ case "${1:-}" in
     exit 0
     ;;
   --uninstall)
+    case "$INSTALL_DIR" in ""|/|//|.) echo "codegraph-viz: refusing to uninstall with an unsafe install directory." >&2; exit 1 ;; esac
+    case "$BIN_DIR" in ""|/|//|.) echo "codegraph-viz: refusing to uninstall with an unsafe launcher directory." >&2; exit 1 ;; esac
     rm -f "$BIN_DIR/codegraph-viz" "$BIN_DIR/codegraph-viz-mcp"
     if [ -d "$INSTALL_DIR" ]; then rm -rf "$INSTALL_DIR"; fi
     echo "codegraph-viz uninstalled."
