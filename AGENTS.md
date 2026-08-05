@@ -202,8 +202,12 @@ diffs, branches, commits, tests, and pull requests. Distinguish inspected,
 proposed, modified, tested, committed, reviewed, and merged states. Attribution
 requires recorded evidence and must never be guessed from timing alone.
 Each correlation records per-agent authoring event IDs and whether the evidence
-is an explicit edit or proposal. The UI labels absent authorship as incomplete
-and multiple recorded authors as conflicting attribution.
+is an explicit edit or proposal. Review readiness uses working-tree files when
+present, otherwise the diff from the default branch. Historical changes stay
+visible outside readiness counts. Multiple recorded authors are informational;
+they become a concurrent conflict only when their recorded run intervals and
+file-authoring events overlap. Approved pull request evidence applies at branch
+level and is labeled as such rather than presented as file-specific review.
 
 **M7. Multi-agent views.** Add agent delegation, activity timeline, change,
 knowledge, and review views alongside the code graph. Surface overlapping edits,
