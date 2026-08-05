@@ -56,6 +56,20 @@ test("retains changed-file evidence for recent commits after the working tree is
   ]);
 });
 
+test("reports changes since the current branch diverged from the default branch", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "complete main work");
+  git(path, "switch", "-c", "feature/scope");
+  await writeFile(join(path, "app.ts"), "export const value = 3;\n");
+  git(path, "add", "--", "app.ts");
+  git(path, "commit", "-m", "feature change");
+
+  const snapshot = inspectGit(path);
+  assert.equal(snapshot.branchBase, "main");
+  assert.deepEqual(snapshot.branchChanges, [{ path: "app.ts", additions: 1, deletions: 1 }]);
+});
+
 test("attributes changes only from explicit evidence and detects overlaps", async () => {
   const path = await repository();
   const events = normalizeProvenance([

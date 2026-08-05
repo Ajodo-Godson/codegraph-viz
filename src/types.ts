@@ -137,6 +137,8 @@ export interface GitSnapshot {
   branch: string | null;
   head: string | null;
   changes: GitChange[];
+  branchBase?: string | null;
+  branchChanges?: GitCommitChange[];
   recentCommits: GitCommit[];
 }
 
@@ -180,7 +182,7 @@ export interface ChangeCorrelation {
     eventIds: string[];
     reasons: ("explicit_file_edit" | "explicit_edit_proposal")[];
   }>;
-  attributionStatus: "attributed" | "unattributed" | "overlapping";
+  attributionStatus: "attributed" | "unattributed" | "multiple_contributors" | "concurrent_conflict";
   symbolIds: string[];
   evidence: ("explicit_event_target" | "commit_membership")[];
   states: {
@@ -193,4 +195,6 @@ export interface ChangeCorrelation {
     prOpened: boolean;
   };
   overlappingAgents: boolean;
+  multipleContributors: boolean;
+  concurrentConflict: boolean;
 }

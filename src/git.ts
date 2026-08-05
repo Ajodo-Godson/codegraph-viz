@@ -73,6 +73,26 @@ function commitChanges(root: string, sha: string): GitCommitChange[] {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function defaultBranch(root: string): string | null {
+  const remote = git(root, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], true);
+  for (const candidate of [remote, "main", "master"].filter(Boolean)) {
+    if (git(root, ["rev-parse", "--verify", candidate], true)) return candidate;
+  }
+  return null;
+}
+
+function currentBranchChanges(root: string, branch: string | null): { branchBase: string | null; branchChanges: GitCommitChange[] } {
+  const base = defaultBranch(root);
+  const displayBase = base?.replace(/^origin\//, "") ?? null;
+  if (!base || !branch || branch === displayBase) return { branchBase: displayBase, branchChanges: [] };
+  const mergeBase = git(root, ["merge-base", "HEAD", base], true);
+  if (!mergeBase) return { branchBase: displayBase, branchChanges: [] };
+  const changes = [...parseNumstat(git(root, ["diff", "--numstat", "-z", "--find-renames", `${mergeBase}..HEAD`], true, false))]
+    .map(([path, counts]) => ({ path, ...counts }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  return { branchBase: displayBase, branchChanges: changes };
+}
+
 export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
   const root = git(projectPath, ["rev-parse", "--show-toplevel"]);
   const branch = git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], true) || null;
@@ -84,5 +104,5 @@ export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
     ...commit,
     changes: commitChanges(root, commit.sha)
   }));
-  return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), recentCommits };
+  return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), ...currentBranchChanges(root, branch), recentCommits };
 }
