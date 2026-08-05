@@ -99,10 +99,14 @@ export function inspectGit(projectPath: string, commitLimit = 20): GitSnapshot {
   const head = git(root, ["rev-parse", "--verify", "HEAD"], true) || null;
   const status = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], false, false);
   const numstat = git(root, ["diff", "--numstat", "-z", "HEAD"], true, false);
+  const changes = parseChanges(status, parseNumstat(numstat));
   const log = git(root, ["log", `-${commitLimit}`, "--format=%H%x00%an%x00%aI%x00%s%x1e"], true);
   const recentCommits = parseCommits(log).map((commit) => ({
     ...commit,
     changes: commitChanges(root, commit.sha)
   }));
-  return { root, branch, head, changes: parseChanges(status, parseNumstat(numstat)), ...currentBranchChanges(root, branch), recentCommits };
+  const branchScope = changes.length > 0
+    ? { branchBase: null, branchChanges: [] }
+    : currentBranchChanges(root, branch);
+  return { root, branch, head, changes, ...branchScope, recentCommits };
 }

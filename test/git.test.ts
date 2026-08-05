@@ -70,6 +70,22 @@ test("reports changes since the current branch diverged from the default branch"
   assert.deepEqual(snapshot.branchChanges, [{ path: "app.ts", additions: 1, deletions: 1 }]);
 });
 
+test("skips branch change collection when the working tree has changes", async () => {
+  const path = await repository();
+  git(path, "add", "--", "app.ts", "new.ts");
+  git(path, "commit", "-m", "complete main work");
+  git(path, "switch", "-c", "feature/scope");
+  await writeFile(join(path, "app.ts"), "export const value = 3;\n");
+  git(path, "add", "--", "app.ts");
+  git(path, "commit", "-m", "feature change");
+  await writeFile(join(path, "app.ts"), "export const value = 4;\n");
+
+  const snapshot = inspectGit(path);
+  assert.deepEqual(snapshot.changes.map((change) => change.path), ["app.ts"]);
+  assert.equal(snapshot.branchBase, null);
+  assert.deepEqual(snapshot.branchChanges, []);
+});
+
 test("attributes changes only from explicit evidence and detects overlaps", async () => {
   const path = await repository();
   const events = normalizeProvenance([
