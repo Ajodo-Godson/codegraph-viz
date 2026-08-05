@@ -17,6 +17,13 @@ test("detects an existing CodeGraph index without initializing", async () => {
   assert.equal(calls, 0);
 });
 
+test("treats a missing or non-file database path as no index", async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-missing-index-"));
+  assert.equal(hasCodeGraphIndex(projectPath), false);
+  await mkdir(join(projectPath, ".codegraph", "codegraph.db"), { recursive: true });
+  assert.equal(hasCodeGraphIndex(projectPath), false);
+});
+
 test("runs CodeGraph initialization and waits for its database", async () => {
   const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-init-"));
   const calls: Array<{ command: string; args: string[] }> = [];

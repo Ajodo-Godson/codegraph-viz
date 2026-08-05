@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -16,7 +16,8 @@ function databasePath(projectPath: string): string {
 
 export function hasCodeGraphIndex(projectPath: string): boolean {
   const path = databasePath(projectPath);
-  return existsSync(path) && statSync(path).isFile();
+  const stats = statSync(path, { throwIfNoEntry: false });
+  return stats?.isFile() ?? false;
 }
 
 const runCodeGraphInit: CodeGraphInitRunner = (command, args) => new Promise((resolvePromise, reject) => {
