@@ -547,9 +547,11 @@
         const card = element("article", undefined, "card");
         card.append(element("h3", `Pull request #${pullRequest.number}`));
         card.append(element("p", `${pullRequest.state}${pullRequest.isDraft ? " | draft" : ""} | merge ${pullRequest.mergeState || "unknown"} | review ${pullRequest.reviewDecision || "pending"}`));
-        const failedChecks = pullRequest.checks.filter((check) => check.conclusion && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.conclusion)).length;
+        const failedCheckStates = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STALE"]);
+        const failedChecks = pullRequest.checks.filter((check) => failedCheckStates.has(check.conclusion || check.status)).length;
         card.append(element("p", `${pullRequest.checks.length} checks | ${failedChecks} failing | ${pullRequest.reviews.length} reviews | ${pullRequest.unresolvedReviewThreads ?? "?"} unresolved threads`));
         card.append(element("p", pullRequest.url, "path"));
+        if (githubEvidence.diagnostics?.length) card.append(element("p", githubEvidence.diagnostics.join(" "), "empty"));
         secondaryView.append(card);
       } else {
         secondaryView.append(element("p", githubEvidence.diagnostics?.[0] || "No GitHub pull request evidence is available for this branch.", "empty"));
