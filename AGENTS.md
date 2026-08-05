@@ -194,8 +194,10 @@ project, normalize supported tool events, deduplicate imports, and report scan
 diagnostics. `--provider` limits discovery and `--no-agent-traces` disables it.
 Explicit `--trace` files remain supported and are merged with discovered events.
 Event identity includes provider, run, and native event ID so concurrent runs
-cannot erase one another. Diagnostics count malformed, unsupported, incomplete,
-and skipped records without retaining their sensitive contents.
+cannot erase one another. Correlation references and UI filters use that same
+composite identity. Diagnostics count matched sessions even when they import no
+events, plus malformed, unsupported, incomplete, and skipped records, without
+retaining their sensitive contents.
 
 **M6. Git and change attribution.** Correlate agent edits with working-tree
 diffs, branches, commits, tests, and pull requests. Distinguish inspected,
