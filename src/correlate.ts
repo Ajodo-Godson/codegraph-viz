@@ -119,6 +119,16 @@ export function correlateChanges(
     ]);
     const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
+    const attributions = agentIds.map((agentId) => {
+      const authored = authoring.filter((event) => event.agentId === agentId);
+      return {
+        agentId,
+        eventIds: authored.map((event) => event.id).sort(),
+        reasons: [...new Set(authored.map((event) => event.kind === "file_edited"
+          ? "explicit_file_edit" as const
+          : "explicit_edit_proposal" as const))].sort()
+      };
+    });
     const fileSymbols = symbolsByPath.get(path) ?? [];
     const symbolIds = [...new Set(related.flatMap((event) => fileSymbols.filter((symbol) => symbolMatches(symbol, event)).map((symbol) => symbol.id)))].sort();
     const kinds = new Set(related.map((event) => event.kind));
@@ -127,6 +137,8 @@ export function correlateChanges(
       commitShas: commitsByPath.get(path) ?? [],
       eventIds: related.map((event) => event.id).sort(),
       agentIds,
+      attributions,
+      attributionStatus: agentIds.length > 1 ? "overlapping" : agentIds.length === 1 ? "attributed" : "unattributed",
       symbolIds,
       evidence: [
         ...(related.length ? ["explicit_event_target" as const] : []),

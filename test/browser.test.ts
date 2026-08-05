@@ -55,6 +55,11 @@ function browserGraphFixture(): PreparedGraph {
       totalNodes: 2, shownNodes: 2, droppedNodes: 0,
       totalLinks: 1, shownLinks: 1, droppedLinks: 0, pruned: false
     },
+    traceDiagnostics: [{
+      provider: "codex", filesScanned: 2, sessionsMatched: 1, eventsImported: 4, skippedFiles: 0,
+      malformedRecords: 0, unsupportedRecords: 1, incompleteRecords: 1,
+      warnings: ["fixture: unsupported and incomplete records"]
+    }],
     provenance: [
       {
         id: "root-start", timestamp: "2026-08-04T12:00:00.000Z", provider: "codex",
@@ -113,6 +118,8 @@ function browserGraphFixture(): PreparedGraph {
       {
         path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
         agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
+        attributions: [{ agentId: "/root/worker", eventIds: ["edit"], reasons: ["explicit_file_edit"] }],
+        attributionStatus: "attributed",
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: true, tested: false,
@@ -122,6 +129,8 @@ function browserGraphFixture(): PreparedGraph {
       {
         path: "test/browser.test.ts", commitShas: [], eventIds: [],
         agentIds: ["/root/worker"], symbolIds: [], evidence: ["explicit_event_target"],
+        attributions: [{ agentId: "/root/worker", eventIds: ["fixture-edit"], reasons: ["explicit_file_edit"] }],
+        attributionStatus: "attributed",
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: false, tested: false,
@@ -184,6 +193,8 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     const filteredChanges = await page.locator("#secondary-view").innerText();
     assert.match(filteredChanges, /1 working-tree and 0 recent committed changes/);
     assert.match(filteredChanges, /src\/alpha\.ts/);
+    assert.match(filteredChanges, /\/root\/worker: explicit file edit \(1 event\)/);
+    assert.match(filteredChanges, /attributed/);
     assert.doesNotMatch(filteredChanges, /src\/beta\.ts/);
 
     await selectView(page, "review");
@@ -195,11 +206,15 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.match(filteredReview, /Pull request #12/);
     assert.match(filteredReview, /2 checks \| 2 failing \| 1 reviews \| 2 unresolved threads/);
     assert.match(filteredReview, /Some GitHub evidence is unavailable/);
+    assert.match(filteredReview, /Trace evidence diagnostics/);
+    assert.match(filteredReview, /codex: 0 malformed \| 1 unsupported \| 1 incomplete \| 0 skipped/);
     assert.doesNotMatch(filteredReview, /src\/beta\.ts/);
 
     await page.locator("#detail-panel").getByRole("button", { name: "src/alpha.ts" }).click();
     assert.equal(await page.locator('.view-tab[data-view="code"]').getAttribute("aria-selected"), "true");
     assert.match(await page.locator("#detail-panel").innerText(), /alpha\.ts/);
+    assert.match(await page.locator("#detail-panel").innerText(), /Attribution evidence/i);
+    assert.match(await page.locator("#detail-panel").innerText(), /explicit file edit/);
     assert.equal(new URL(page.url()).hash, "#agent=%2Froot%2Fworker");
     await page.locator("#layer-filters input").first().uncheck();
     await page.locator("#edge-filters input").first().uncheck();

@@ -73,3 +73,19 @@ test("deduplicates equivalent provider events deterministically", () => {
   assert.deepEqual(deduplicateCorrelationEvents([...duplicates].reverse()).map((event) => event.id), ["a-original"]);
   assert.deepEqual(correlateChanges(snapshot, duplicates, [])[0]?.eventIds, ["a-original"]);
 });
+
+test("explains direct attribution and labels overlapping and missing evidence", () => {
+  const correlated = correlateChanges(snapshot, events([
+    { id: "proposal", agentId: "agent-a", kind: "edit_proposed", target: "a.ts" },
+    { id: "edit", agentId: "agent-b", kind: "file_edited", target: "a.ts" }
+  ]), []);
+  const a = correlated.find((item) => item.path === "a.ts")!;
+  const b = correlated.find((item) => item.path === "b.ts")!;
+  assert.equal(a.attributionStatus, "overlapping");
+  assert.deepEqual(a.attributions, [
+    { agentId: "agent-a", eventIds: ["proposal"], reasons: ["explicit_edit_proposal"] },
+    { agentId: "agent-b", eventIds: ["edit"], reasons: ["explicit_file_edit"] }
+  ]);
+  assert.equal(b.attributionStatus, "unattributed");
+  assert.deepEqual(b.attributions, []);
+});

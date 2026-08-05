@@ -192,6 +192,7 @@
     const correlations = graph.correlations || [];
     const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
     const githubEvidence = graph.github || { pullRequest: null, diagnostics: [] };
+    const traceDiagnostics = graph.traceDiagnostics || [];
     const eventById = new Map(provenance.map((event) => [event.id, event]));
     const contributionPathsByAgent = new Map();
     const activityFilters = {
@@ -329,6 +330,16 @@
       return event.target.path || event.target.symbolId || event.target.value || event.target.type;
     }
 
+    function attributionReasonLabel(reason) {
+      return reason === "explicit_file_edit" ? "explicit file edit" :
+        reason === "explicit_edit_proposal" ? "explicit edit proposal" : reason;
+    }
+
+    function attributionSummary(attribution) {
+      const reasons = (attribution.reasons || []).map(attributionReasonLabel).join(", ");
+      return `${attribution.agentId}: ${reasons || "recorded attribution"} (${attribution.eventIds.length} event${attribution.eventIds.length === 1 ? "" : "s"})`;
+    }
+
     function agentContributionPaths(agentId) {
       if (contributionPathsByAgent.has(agentId)) return contributionPathsByAgent.get(agentId);
       const direct = provenance.filter((event) => event.agentId === agentId && event.target?.path).map((event) => event.target.path);
@@ -366,6 +377,8 @@
           showNode(node);
         });
         detailPanel.append(button);
+        const attribution = correlations.find((item) => item.path === path)?.attributions?.find((item) => item.agentId === agentId);
+        if (attribution) detailPanel.append(element("p", attributionSummary(attribution), "path"));
       }
       detailPanel.append(element("h2", `Knowledge (${knowledge.length})`));
       for (const event of knowledge.slice(0, 20)) detailPanel.append(element("p", event.summary || "Knowledge report", "path"));
@@ -497,12 +510,16 @@
           : (change.staged ? "staged" : "not staged");
         card.append(element("p", `+${change.additions ?? "?"} / -${change.deletions ?? "?"} | ${changeState}`));
         card.append(element("p", correlation?.agentIds.length ? `Agents: ${correlation.agentIds.join(", ")}` : "No agent attribution evidence", correlation?.agentIds.length ? "" : "empty"));
+        for (const attribution of correlation?.attributions || []) card.append(element("p", attributionSummary(attribution), "path"));
+        const attributionStatus = correlation?.attributionStatus === "overlapping" ? "conflicting attribution" :
+          correlation?.attributionStatus === "unattributed" || !correlation ? "incomplete attribution" : "attributed";
         card.append(badges([
           change.source,
+          attributionStatus,
           ...(correlation ? Object.entries(correlation.states).filter(([, enabled]) => enabled).map(([name]) => name) : []),
           ...(correlation?.overlappingAgents ? ["overlap"] : []),
           ...(correlation?.evidence || [])
-        ], new Set(["overlap"])));
+        ], new Set(["overlap", "conflicting attribution", "incomplete attribution"])));
         grid.append(card);
       }
       secondaryView.append(grid);
@@ -556,6 +573,14 @@
       } else {
         secondaryView.append(element("p", githubEvidence.diagnostics?.[0] || "No GitHub pull request evidence is available for this branch.", "empty"));
       }
+      const traceIssues = traceDiagnostics.filter((item) => item.malformedRecords || item.unsupportedRecords || item.incompleteRecords || item.skippedFiles);
+      if (traceIssues.length) {
+        const card = element("article", undefined, "card");
+        card.append(element("h3", "Trace evidence diagnostics"));
+        for (const item of traceIssues) card.append(element("p", `${item.provider}: ${item.malformedRecords || 0} malformed | ${item.unsupportedRecords || 0} unsupported | ${item.incompleteRecords || 0} incomplete | ${item.skippedFiles || 0} skipped`, "path"));
+        card.append(element("p", "These records were not used as positive authorship or verification evidence.", "empty"));
+        secondaryView.append(card);
+      }
       const metrics = element("div", undefined, "metrics");
       for (const [label, value] of [["Unattributed", unattributed.length], ["Overlaps", overlaps.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
         const metric = element("div", undefined, "metric");
@@ -573,8 +598,8 @@
         for (const path of flagged) {
           const item = correlations.find((correlation) => correlation.path === path);
           const risks = [];
-          if (!item?.agentIds.length) risks.push("unattributed");
-          if (item?.overlappingAgents) risks.push("overlap");
+          if (!item?.agentIds.length) risks.push("incomplete attribution");
+          if (item?.overlappingAgents) risks.push("conflicting attribution");
           if (item?.states.modified && !item.states.tested) risks.push("untested");
           if (item?.states.modified && !item.states.reviewed) risks.push("unreviewed");
           if (item?.states.modified && !item.states.committed) risks.push("uncommitted");
@@ -777,6 +802,13 @@
       detailPanel.append(element("div", node.label, "title"));
       detailPanel.append(element("div", node.path, "path"));
       addFacts([["Type", node.type], ["Layer", node.layer], ["Files", node.fileCount], ["Symbols", node.symbolCount], ["Weighted degree", node.degree]]);
+      const correlation = node.type === "file" ? correlations.find((item) => item.path === node.path) : null;
+      if (correlation) {
+        detailPanel.append(element("h2", "Attribution evidence"));
+        detailPanel.append(element("p", correlation.attributionStatus === "overlapping" ? "Conflicting attribution: multiple agents recorded authoring evidence." :
+          correlation.attributionStatus === "unattributed" ? "Incomplete attribution: no recorded authoring evidence." : "Attributed from explicit authoring evidence.", "path"));
+        for (const attribution of correlation.attributions || []) detailPanel.append(element("p", attributionSummary(attribution), "path"));
+      }
       const matchedSymbols = graph.symbols.filter((symbol) => node.type === "directory" ? directoryOf(symbol.filePath) === node.id : symbol.filePath === node.path);
       detailPanel.append(element("h2", `Symbols (${matchedSymbols.length})`));
       if (matchedSymbols.length === 0) detailPanel.append(element("p", "No indexed symbols", "empty"));
