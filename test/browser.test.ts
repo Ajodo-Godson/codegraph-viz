@@ -96,6 +96,16 @@ function browserGraphFixture(): PreparedGraph {
       ],
       recentCommits: []
     },
+    github: {
+      pullRequest: {
+        number: 12, url: "https://github.com/example/codegraph-viz/pull/12", state: "OPEN",
+        isDraft: false, mergeState: "BLOCKED", reviewDecision: "REVIEW_REQUIRED",
+        checks: [{ name: "CI", status: "COMPLETED", conclusion: "FAILURE", url: null }],
+        reviews: [{ author: "reviewer", state: "COMMENTED", submittedAt: "2026-08-04T13:00:00Z" }],
+        unresolvedReviewThreads: 2
+      },
+      diagnostics: []
+    },
     correlations: [
       {
         path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
@@ -179,6 +189,8 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.match(filteredReview, /1\s+Unreviewed/);
     assert.match(filteredReview, /1\s+Uncommitted/);
     assert.match(filteredReview, /src\/alpha\.ts/);
+    assert.match(filteredReview, /Pull request #12/);
+    assert.match(filteredReview, /1 checks \| 1 failing \| 1 reviews \| 2 unresolved threads/);
     assert.doesNotMatch(filteredReview, /src\/beta\.ts/);
 
     await page.locator("#detail-panel").getByRole("button", { name: "src/alpha.ts" }).click();
