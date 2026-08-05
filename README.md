@@ -28,6 +28,11 @@ codegraph-viz --init
 
 The visualization is written to `codegraph-map.html`.
 
+```sh
+open codegraph-map.html       # macOS
+xdg-open codegraph-map.html   # Linux
+```
+
 ## MCP
 
 ```sh
