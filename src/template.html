@@ -388,7 +388,17 @@
     function clearActivityFilters() {
       for (const control of Object.values(activityFilters)) control.value = "";
       writeAgentHash("");
+      selected = null;
+      hovered = null;
       showDefaultDetails();
+    }
+
+    function resetGraphFilters() {
+      enabledLayers.clear();
+      for (const layer of graph.layers) enabledLayers.add(layer.id);
+      enabledEdges.clear();
+      for (const kind of edgeKinds) enabledEdges.add(kind);
+      for (const checkbox of document.querySelectorAll("#layer-filters input, #edge-filters input")) checkbox.checked = true;
     }
 
     function renderAgentView(events) {
@@ -835,6 +845,7 @@
     });
     document.getElementById("full-graph").addEventListener("click", () => {
       clearActivityFilters();
+      resetGraphFilters();
       setView("code");
       fitView();
       draw();

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { chromium, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 
 import type { PreparedGraph } from "../src/granularity.ts";
 import { renderGraph } from "../src/render.ts";
@@ -119,16 +119,17 @@ test("offline visualization supports complete agent drill-down and recovery", { 
   const outputPath = join(directory, "map.html");
   await writeFile(outputPath, renderGraph(browserGraphFixture(), { generatedAt: "2026-08-04T14:00:00Z" }));
 
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
+  let browser: Browser | undefined;
   const pageErrors: string[] = [];
   const externalRequests: string[] = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  page.on("request", (request) => {
-    if (!request.url().startsWith("file:")) externalRequests.push(request.url());
-  });
 
   try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("request", (request) => {
+      if (!request.url().startsWith("file:")) externalRequests.push(request.url());
+    });
     await page.goto(`file://${outputPath}`);
     await page.locator("#graph-canvas").waitFor({ state: "visible" });
     assert.equal(await page.locator('.view-tab[data-view="code"]').getAttribute("aria-selected"), "true");
@@ -168,6 +169,8 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.equal(await page.locator('.view-tab[data-view="code"]').getAttribute("aria-selected"), "true");
     assert.match(await page.locator("#detail-panel").innerText(), /alpha\.ts/);
     assert.equal(new URL(page.url()).hash, "#agent=%2Froot%2Fworker");
+    await page.locator("#layer-filters input").first().uncheck();
+    await page.locator("#edge-filters input").first().uncheck();
 
     await page.locator("#full-graph").click();
     assert.equal(await page.locator("#agent-filter").inputValue(), "");
@@ -175,6 +178,8 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.equal(await page.locator('.view-tab[data-view="code"]').getAttribute("aria-selected"), "true");
     await assert.doesNotReject(() => page.locator("#graph-canvas").waitFor({ state: "visible" }));
     assert.match(await page.locator("#detail-panel").innerText(), /Select a node or agent/);
+    assert.equal(await page.locator("#layer-filters input:not(:checked)").count(), 0);
+    assert.equal(await page.locator("#edge-filters input:not(:checked)").count(), 0);
 
     await selectView(page, "agents");
     assert.match(await page.locator("#secondary-view").innerText(), /2 agents across 1 runs/);
@@ -220,7 +225,7 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(externalRequests, []);
   } finally {
-    await browser.close();
+    await browser?.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
