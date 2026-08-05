@@ -72,6 +72,23 @@ test("preserves normalized source order when merging timestamp ties", async () =
   assert.deepEqual(result.graph.provenance?.map(({ id }) => id), ["z-first", "a-second"]);
 });
 
+test("retains the same native event id from separate runs", async () => {
+  const fixture = await createCodeGraphProject({ populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 1 });
+    insertNode(database, { id: "main", kind: "function", name: "main", filePath: "src/index.ts" });
+  } });
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-run-identity-"));
+  const tracePath = join(directory, "events.json");
+  await writeFile(tracePath, JSON.stringify([
+    { id: "shared", timestamp: "2026-08-04T12:00:00Z", provider: "codex", runId: "run-a", kind: "file_read", target: "src/index.ts" },
+    { id: "shared", timestamp: "2026-08-04T12:01:00Z", provider: "codex", runId: "run-b", kind: "file_read", target: "src/index.ts" }
+  ]));
+  const result = await generateVisualization({
+    projectPath: fixture.projectPath, outputPath: join(directory, "map.html"), tracePaths: [tracePath], autoTraces: false
+  });
+  assert.deepEqual(result.graph.provenance?.map(({ runId }) => runId), ["run-a", "run-b"]);
+});
+
 test("loads and validates project layer configuration", async () => {
   const directory = await mkdtemp(join(tmpdir(), "codegraph-config-"));
   await writeFile(join(directory, "codegraph-viz.json"), JSON.stringify({ rename: { src: "app" } }));

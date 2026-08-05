@@ -102,6 +102,9 @@ export interface TraceDiscoveryDiagnostic {
   sessionsMatched: number;
   eventsImported: number;
   skippedFiles: number;
+  malformedRecords: number;
+  unsupportedRecords: number;
+  incompleteRecords: number;
   warnings: string[];
 }
 
@@ -172,6 +175,12 @@ export interface ChangeCorrelation {
   commitShas: string[];
   eventIds: string[];
   agentIds: string[];
+  attributions: Array<{
+    agentId: string;
+    eventIds: string[];
+    reasons: ("explicit_file_edit" | "explicit_edit_proposal")[];
+  }>;
+  attributionStatus: "attributed" | "unattributed" | "overlapping";
   symbolIds: string[];
   evidence: ("explicit_event_target" | "commit_membership")[];
   states: {
