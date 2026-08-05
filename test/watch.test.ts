@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { get } from "node:http";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { inputFingerprint } from "../src/watch.ts";
+import { inputFingerprint, startLiveVisualization } from "../src/watch.ts";
+import { createCodeGraphProject, insertFile } from "./fixtures.ts";
 
 test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes", async () => {
   const root = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-"));
@@ -58,4 +60,53 @@ test("input fingerprint can exclude automatic provider traces", async () => {
   const initial = await inputFingerprint(options);
   await writeFile(join(traceRoot, "session.jsonl"), "event-222\n");
   assert.equal(await inputFingerprint(options), initial);
+});
+
+test("live server reloads after trace changes while keeping the snapshot offline", { timeout: 15_000 }, async () => {
+  const fixture = await createCodeGraphProject({ populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 0 });
+  } });
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-live-"));
+  const outputPath = join(root, "map.html");
+  const tracePath = join(root, "events.jsonl");
+  await writeFile(tracePath, "");
+  let resolveUpdate: (() => void) | undefined;
+  const updated = new Promise<void>((resolvePromise) => { resolveUpdate = resolvePromise; });
+  const live = await startLiveVisualization({
+    projectPath: fixture.projectPath,
+    outputPath,
+    tracePaths: [tracePath],
+    autoTraces: false,
+    intervalMs: 20,
+    remoteRefreshMs: 60_000,
+    port: 0,
+    onUpdate: () => resolveUpdate?.()
+  });
+  try {
+    const served = await fetch(live.url).then((response) => response.text());
+    assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
+    assert.doesNotMatch(await readFile(outputPath, "utf8"), /EventSource/);
+
+    let resolveConnected: (() => void) | undefined;
+    const connected = new Promise<void>((resolvePromise) => { resolveConnected = resolvePromise; });
+    const reloaded = new Promise<void>((resolvePromise, reject) => {
+      const request = get(`${live.url}__codegraph_viz_events`, (response) => {
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          resolveConnected?.();
+          if (chunk.includes("event: reload")) resolvePromise();
+        });
+      });
+      request.on("error", reject);
+    });
+    await connected;
+    await writeFile(tracePath, `${JSON.stringify({
+      id: "live-event", timestamp: "2026-08-05T05:00:00Z", runId: "live-run",
+      agentId: "root", kind: "file_read", target: "src/index.ts"
+    })}\n`);
+    await Promise.all([updated, reloaded]);
+    assert.match(await readFile(outputPath, "utf8"), /live-event/);
+  } finally {
+    await live.close();
+  }
 });
