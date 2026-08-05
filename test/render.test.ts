@@ -39,6 +39,13 @@ function graphFixture(): PreparedGraph {
     },
     provenance: [
       {
+        id: "edit", timestamp: "2026-08-04T12:00:30.000Z", provider: "codex",
+        runId: "run-1", agentId: "child", parentAgentId: "root", taskId: "task-1",
+        kind: "file_edited", knownKind: true,
+        target: { type: "file", path: "src/</script><img src=x>.ts" },
+        summary: "Edited parser fixture", sourceRef: "fixture", metadata: {}
+      },
+      {
         id: "spawn", timestamp: "2026-08-04T12:00:00.000Z", provider: "codex",
         runId: "run-1", agentId: "child", parentAgentId: "root", taskId: "task-1",
         kind: "agent_spawned", knownKind: true, target: { type: "task", value: "Inspect parser" },
@@ -57,8 +64,8 @@ function graphFixture(): PreparedGraph {
       changes: [{ path: "src/</script><img src=x>.ts", indexStatus: " ", worktreeStatus: "M", staged: false, unstaged: true, additions: 2, deletions: 1 }]
     },
     correlations: [{
-      path: "src/</script><img src=x>.ts", commitShas: [], eventIds: ["knowledge"], agentIds: ["child"],
-      attributions: [{ agentId: "child", eventIds: ["knowledge"], reasons: ["explicit_file_edit"] }],
+      path: "src/</script><img src=x>.ts", commitShas: [], eventIds: ["codex\0run-1\0edit"], agentIds: ["child"],
+      attributions: [{ agentId: "child", eventIds: ["codex\0run-1\0edit"], reasons: ["explicit_file_edit"] }],
       attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
       symbolIds: ["danger"], evidence: ["explicit_event_target"], overlappingAgents: false,
       states: { inspected: true, proposed: false, modified: true, tested: false, committed: false, reviewed: false, prOpened: false }
