@@ -71,7 +71,10 @@ const EVENTS_PATH = "/__codegraph_viz_events";
 const LIVE_RELOAD_SCRIPT = `<script>(()=>{const events=new EventSource("${EVENTS_PATH}");events.addEventListener("reload",()=>location.reload());})();</script>`;
 
 function injectLiveReload(html: string): string {
-  return html.includes("</body>") ? html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`) : `${html}${LIVE_RELOAD_SCRIPT}`;
+  const liveCsp = html.replace("default-src 'none';", "default-src 'none'; connect-src 'self';");
+  return liveCsp.includes("</body>")
+    ? liveCsp.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`)
+    : `${liveCsp}${LIVE_RELOAD_SCRIPT}`;
 }
 
 export async function startLiveVisualization(options: LiveVisualizationOptions): Promise<LiveVisualization> {

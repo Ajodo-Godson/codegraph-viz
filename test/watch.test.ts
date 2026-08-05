@@ -85,7 +85,10 @@ test("live server reloads after trace changes while keeping the snapshot offline
   try {
     const served = await fetch(live.url).then((response) => response.text());
     assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
-    assert.doesNotMatch(await readFile(outputPath, "utf8"), /EventSource/);
+    assert.match(served, /connect-src 'self'/);
+    const snapshot = await readFile(outputPath, "utf8");
+    assert.doesNotMatch(snapshot, /EventSource/);
+    assert.doesNotMatch(snapshot, /connect-src/);
 
     let resolveConnected: (() => void) | undefined;
     const connected = new Promise<void>((resolvePromise) => { resolveConnected = resolvePromise; });
