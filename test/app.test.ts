@@ -9,9 +9,9 @@ import { parseArguments } from "../src/cli.ts";
 import { createCodeGraphProject, insertFile, insertNode } from "./fixtures.ts";
 
 test("parses complete CLI graph options", () => {
-  assert.deepEqual(parseArguments(["repo", "-o", "map.html", "--level", "symbol", "--max-nodes", "25", "--filter", "src", "--trace", "events.jsonl", "--provider", "codex", "--no-agent-traces", "--force"]), {
+  assert.deepEqual(parseArguments(["repo", "-o", "map.html", "--level", "symbol", "--max-nodes", "25", "--filter", "src", "--trace", "events.jsonl", "--provider", "codex", "--no-agent-traces", "--init", "--force"]), {
     projectPath: "repo", outputPath: "map.html", level: "symbol", maxNodes: 25,
-    filterPaths: ["src"], tracePaths: ["events.jsonl"], autoTraces: false, providers: ["codex"], json: false, force: true, help: false, version: false
+    filterPaths: ["src"], tracePaths: ["events.jsonl"], autoTraces: false, providers: ["codex"], initialize: true, json: false, force: true, help: false, version: false
   });
   assert.throws(() => parseArguments(["--max-nodes", "0"]), /positive integer/);
   assert.throws(() => parseArguments(["--unknown"]), /Unknown option/);

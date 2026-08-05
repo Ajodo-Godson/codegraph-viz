@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 
 import { generateVisualization } from "./app.ts";
 import { extractGraph } from "./extract.ts";
 import type { PrepareGraphOptions } from "./granularity.ts";
 import { openCodeGraph } from "./open.ts";
+import { ensureCodeGraphIndex, hasCodeGraphIndex } from "./setup.ts";
 import type { TraceProvider } from "./types.ts";
 
 export interface CliOptions extends PrepareGraphOptions {
@@ -13,6 +15,7 @@ export interface CliOptions extends PrepareGraphOptions {
   force: boolean;
   help: boolean;
   version: boolean;
+  initialize: boolean;
   tracePaths: string[];
   autoTraces: boolean;
   providers: TraceProvider[];
@@ -28,6 +31,7 @@ Options:
   --trace <file>            Import provenance JSON or JSONL; repeatable
   --provider <provider>     Discover codex or claude traces; repeatable
   --no-agent-traces         Disable automatic local trace discovery
+  --init                    Initialize CodeGraph when its index is missing
   --json                    Write extracted JSON to stdout instead of HTML
   --force                   Replace an existing output file
   -h, --help                Show help
@@ -40,7 +44,7 @@ function valueAfter(args: string[], index: number, option: string): string {
 }
 
 export function parseArguments(args: string[], cwd = process.cwd()): CliOptions {
-  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, filterPaths: [], tracePaths: [], autoTraces: true, providers: [] };
+  const result: CliOptions = { projectPath: cwd, json: false, force: false, help: false, version: false, initialize: false, filterPaths: [], tracePaths: [], autoTraces: true, providers: [] };
   let positional = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -53,6 +57,9 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
         break;
       case "--force":
         result.force = true;
+        break;
+      case "--init":
+        result.initialize = true;
         break;
       case "-h":
       case "--help":
@@ -106,6 +113,17 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
   return result;
 }
 
+async function confirmCodeGraphInitialization(projectPath: string): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await prompt.question(`No CodeGraph index found in ${projectPath}. Initialize it now? [Y/n] `);
+    return answer.trim() === "" || /^y(?:es)?$/i.test(answer.trim());
+  } finally {
+    prompt.close();
+  }
+}
+
 export async function runCli(args = process.argv.slice(2)): Promise<number> {
   try {
     const options = parseArguments(args);
@@ -115,6 +133,15 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
       const packagePath = existsSync(sourcePackagePath) ? sourcePackagePath : new URL("../../package.json", import.meta.url);
       console.log(JSON.parse(readFileSync(packagePath, "utf8")).version);
       return 0;
+    }
+    if (!hasCodeGraphIndex(options.projectPath)) {
+      const initialize = options.initialize || await confirmCodeGraphInitialization(options.projectPath);
+      if (!initialize) {
+        throw new Error("CodeGraph index is missing. Run `codegraph init` or rerun with `codegraph-viz --init`.");
+      }
+      console.log("Initializing CodeGraph...");
+      await ensureCodeGraphIndex(options.projectPath);
+      console.log("CodeGraph index ready.");
     }
     if (options.json) {
       const opened = openCodeGraph(options.projectPath);
