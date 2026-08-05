@@ -87,6 +87,7 @@ mkdir -p "$source_dir"
 tar -xzf "$archive" -C "$source_dir" --strip-components=1
 
 (cd "$source_dir" && npm ci --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund)
+chmod +x "$source_dir/dist/bin/codegraph-viz.js" "$source_dir/dist/bin/codegraph-viz-mcp.js"
 touch "$source_dir/$MARKER_NAME"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"

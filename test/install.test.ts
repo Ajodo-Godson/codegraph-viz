@@ -22,6 +22,7 @@ test("installer includes direct CLI and MCP next steps", async () => {
   assert.match(source, /codegraph-viz --init/);
   assert.match(source, /codex mcp add codegraph-viz -- codegraph-viz-mcp/);
   assert.match(source, /claude mcp add --scope user codegraph-viz -- codegraph-viz-mcp/);
+  assert.match(source, /chmod \+x .*codegraph-viz\.js.*codegraph-viz-mcp\.js/);
 });
 
 test("installer uninstall removes only its installation and launchers", async () => {
