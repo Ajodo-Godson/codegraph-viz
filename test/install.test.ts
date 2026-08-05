@@ -18,8 +18,8 @@ test("installer exposes the simple setup contract", async () => {
 
 test("installer includes direct CLI and MCP next steps", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) => readFile(script, "utf8"));
-  assert.match(source, /codegraph init/);
   assert.match(source, /codegraph-viz/);
+  assert.match(source, /codegraph-viz --init/);
   assert.match(source, /codex mcp add codegraph-viz -- codegraph-viz-mcp/);
   assert.match(source, /claude mcp add --scope user codegraph-viz -- codegraph-viz-mcp/);
 });
