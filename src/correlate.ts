@@ -14,6 +14,52 @@ function appliesToPath(event: ProvenanceEvent, path: string): boolean {
   return event.target?.path === path || metadataPaths(event).includes(path);
 }
 
+function semanticEventKey(event: ProvenanceEvent): string {
+  const target = event.target ? {
+    type: event.target.type,
+    path: event.target.path ?? null,
+    symbolId: event.target.symbolId ?? null,
+    value: event.target.value ?? null,
+    startLine: event.target.startLine ?? null,
+    endLine: event.target.endLine ?? null
+  } : null;
+  return JSON.stringify([
+    event.provider,
+    event.runId,
+    event.agentId,
+    event.parentAgentId,
+    event.taskId,
+    event.timestamp,
+    event.kind,
+    target,
+    [...new Set(metadataPaths(event))].sort()
+  ]);
+}
+
+/** Removes duplicate imported records without treating nearby timestamps as identity. */
+export function deduplicateCorrelationEvents(events: ProvenanceEvent[]): ProvenanceEvent[] {
+  const selected = new Map<string, ProvenanceEvent>();
+  for (const event of events) {
+    const key = semanticEventKey(event);
+    const current = selected.get(key);
+    if (!current || event.id.localeCompare(current.id) < 0) selected.set(key, event);
+  }
+  return [...selected.values()].sort((left, right) =>
+    left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
+}
+
+function isUntargeted(event: ProvenanceEvent): boolean {
+  return !event.target?.path && metadataPaths(event).length === 0;
+}
+
+function runAgentKey(event: ProvenanceEvent): string {
+  return `${event.runId}\0${event.agentId}`;
+}
+
+function runAgentTaskKey(event: ProvenanceEvent): string {
+  return `${runAgentKey(event)}\0${event.taskId ?? ""}`;
+}
+
 function symbolMatches(symbol: GraphSymbol, event: ProvenanceEvent): boolean {
   if (symbol.filePath !== event.target?.path) return false;
   if (event.target.symbolId) return event.target.symbolId === symbol.id;
@@ -27,6 +73,7 @@ export function correlateChanges(
   events: ProvenanceEvent[],
   symbols: GraphSymbol[]
 ): ChangeCorrelation[] {
+  const uniqueEvents = deduplicateCorrelationEvents(events);
   const symbolsByPath = new Map<string, GraphSymbol[]>();
   for (const symbol of symbols) {
     const entries = symbolsByPath.get(symbol.filePath) ?? [];
@@ -34,12 +81,21 @@ export function correlateChanges(
     symbolsByPath.set(symbol.filePath, entries);
   }
   const eventsByPath = new Map<string, ProvenanceEvent[]>();
-  for (const event of events) {
+  const runEvidenceByAgent = new Map<string, ProvenanceEvent[]>();
+  const runEvidenceByTask = new Map<string, ProvenanceEvent[]>();
+  for (const event of uniqueEvents) {
     const paths = new Set([event.target?.path, ...metadataPaths(event)].filter((path): path is string => Boolean(path)));
     for (const path of paths) {
       const entries = eventsByPath.get(path) ?? [];
       entries.push(event);
       eventsByPath.set(path, entries);
+    }
+    if (RUN_EVIDENCE_KINDS.has(event.kind) && isUntargeted(event)) {
+      const index = event.taskId === null ? runEvidenceByAgent : runEvidenceByTask;
+      const key = event.taskId === null ? runAgentKey(event) : runAgentTaskKey(event);
+      const entries = index.get(key) ?? [];
+      entries.push(event);
+      index.set(key, entries);
     }
   }
 
@@ -57,8 +113,10 @@ export function correlateChanges(
   return paths.map((path) => {
     const targeted = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
     const authoring = targeted.filter((event) => AUTHORING_KINDS.has(event.kind));
-    const authoringRuns = new Set(authoring.map((event) => event.runId));
-    const runEvidence = events.filter((event) => authoringRuns.has(event.runId) && RUN_EVIDENCE_KINDS.has(event.kind));
+    const runEvidence = authoring.flatMap((authored) => [
+      ...(runEvidenceByAgent.get(runAgentKey(authored)) ?? []),
+      ...(authored.taskId ? runEvidenceByTask.get(runAgentTaskKey(authored)) ?? [] : [])
+    ]);
     const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
     const fileSymbols = symbolsByPath.get(path) ?? [];

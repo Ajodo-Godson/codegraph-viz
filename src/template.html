@@ -191,6 +191,7 @@
     const provenance = graph.provenance || [];
     const correlations = graph.correlations || [];
     const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
+    const githubEvidence = graph.github || { pullRequest: null, diagnostics: [] };
     const eventById = new Map(provenance.map((event) => [event.id, event]));
     const contributionPathsByAgent = new Map();
     const activityFilters = {
@@ -541,6 +542,20 @@
       const uncommitted = visible.filter((item) => item.states.modified && !item.states.committed);
       viewHeader("Review readiness", "Evidence-based checks for incomplete agent work");
       secondaryView.append(element("p", "Review status requires explicit test, commit, and review events. Missing trace evidence is not treated as verification.", "view-summary"));
+      const pullRequest = githubEvidence.pullRequest;
+      if (pullRequest) {
+        const card = element("article", undefined, "card");
+        card.append(element("h3", `Pull request #${pullRequest.number}`));
+        card.append(element("p", `${pullRequest.state}${pullRequest.isDraft ? " | draft" : ""} | merge ${pullRequest.mergeState || "unknown"} | review ${pullRequest.reviewDecision || "pending"}`));
+        const failedCheckStates = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STALE"]);
+        const failedChecks = pullRequest.checks.filter((check) => failedCheckStates.has(check.conclusion || check.status)).length;
+        card.append(element("p", `${pullRequest.checks.length} checks | ${failedChecks} failing | ${pullRequest.reviews.length} reviews | ${pullRequest.unresolvedReviewThreads ?? "?"} unresolved threads`));
+        card.append(element("p", pullRequest.url, "path"));
+        if (githubEvidence.diagnostics?.length) card.append(element("p", githubEvidence.diagnostics.join(" "), "empty"));
+        secondaryView.append(card);
+      } else {
+        secondaryView.append(element("p", githubEvidence.diagnostics?.[0] || "No GitHub pull request evidence is available for this branch.", "empty"));
+      }
       const metrics = element("div", undefined, "metrics");
       for (const [label, value] of [["Unattributed", unattributed.length], ["Overlaps", overlaps.length], ["Untested", untested.length], ["Unreviewed", unreviewed.length], ["Uncommitted", uncommitted.length]]) {
         const metric = element("div", undefined, "metric");

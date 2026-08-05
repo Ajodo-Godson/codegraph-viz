@@ -137,6 +137,36 @@ export interface GitSnapshot {
   recentCommits: GitCommit[];
 }
 
+export interface GitHubCheckEvidence {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  url: string | null;
+}
+
+export interface GitHubReviewEvidence {
+  author: string | null;
+  state: string;
+  submittedAt: string | null;
+}
+
+export interface GitHubPullRequestEvidence {
+  number: number;
+  url: string;
+  state: string;
+  isDraft: boolean;
+  mergeState: string | null;
+  reviewDecision: string | null;
+  checks: GitHubCheckEvidence[];
+  reviews: GitHubReviewEvidence[];
+  unresolvedReviewThreads: number | null;
+}
+
+export interface GitHubEvidenceResult {
+  pullRequest: GitHubPullRequestEvidence | null;
+  diagnostics: string[];
+}
+
 export interface ChangeCorrelation {
   path: string;
   commitShas: string[];
