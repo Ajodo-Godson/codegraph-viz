@@ -252,7 +252,7 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.ok(secondTheme === "light" || secondTheme === "dark");
     assert.notEqual(firstTheme, secondTheme);
 
-    const screenshots = [];
+    const screenshots: Buffer[] = [];
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
       const screenshotPath = join(directory, `${theme}.png`);
