@@ -129,7 +129,8 @@ src/template.html        the page: inline CSS and JS, no external requests
 src/provenance.ts        normalized append-only agent event model and validation
 src/discovery.ts         native Codex and Claude trace discovery and adapters
 src/correlate.ts         joins provenance targets to CodeGraph files and symbols
-src/git.ts               read-only Git change, commit, and PR correlation
+src/git.ts               read-only Git working-tree and commit inspection
+src/github.ts            optional read-only GitHub PR and review evidence
 src/mcp.ts               MCP server wrapping application functions (M8)
 test/                    node:test suites and golden fixtures
 test/fixtures/           small checked-in .db files for deterministic tests
@@ -207,17 +208,19 @@ functions rather than invoking or duplicating the CLI. It must not return HTML:
 MCP results land in the calling agent's context, and a large page would consume
 a context window per call.
 
-**M9. Verification and optional live mode.** Golden-payload tests run throughout
-the earlier milestones. Add a Playwright smoke test that asserts zero page
+**M9. Verification.** Golden-payload tests run throughout
+the earlier milestones. A Playwright smoke test asserts zero page
 errors, zero external requests, zero horizontal overflow, and correct rendering
-in both themes and reduced-motion mode. A later local collector may append
-events for live viewing, but immutable offline snapshots remain the default.
+in both themes and reduced-motion mode. It captures both themes and exercises
+desktop and narrow viewports. A later local collector may append events for live
+viewing, but immutable offline snapshots remain the default.
 
-Implementation status: M0 through M8 and M5.1 are complete. Provider traces are
+Implementation status: M0 through M9 and M5.1 are complete. Provider traces are
 discovered automatically from local Codex and Claude sessions or imported with
 `--trace <file>` as canonical JSON or JSONL events. Git inspection is read-only,
-and attribution is emitted only when an event explicitly targets a changed
-repository-relative path. M9 verification is next.
+GitHub review evidence is optional and read through `gh`, and attribution is
+emitted only from explicit event or commit evidence. Live collection remains a
+later optional feature; generated HTML snapshots remain the default.
 
 ## 6. Rules for the generated page
 
