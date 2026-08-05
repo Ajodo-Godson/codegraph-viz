@@ -52,9 +52,12 @@ function isUntargeted(event: ProvenanceEvent): boolean {
   return !event.target?.path && metadataPaths(event).length === 0;
 }
 
-function supportsAuthoredEvent(evidence: ProvenanceEvent, authored: ProvenanceEvent): boolean {
-  if (evidence.runId !== authored.runId || evidence.agentId !== authored.agentId) return false;
-  return evidence.taskId === null || evidence.taskId === authored.taskId;
+function runAgentKey(event: ProvenanceEvent): string {
+  return `${event.runId}\0${event.agentId}`;
+}
+
+function runAgentTaskKey(event: ProvenanceEvent): string {
+  return `${runAgentKey(event)}\0${event.taskId ?? ""}`;
 }
 
 function symbolMatches(symbol: GraphSymbol, event: ProvenanceEvent): boolean {
@@ -78,12 +81,21 @@ export function correlateChanges(
     symbolsByPath.set(symbol.filePath, entries);
   }
   const eventsByPath = new Map<string, ProvenanceEvent[]>();
+  const runEvidenceByAgent = new Map<string, ProvenanceEvent[]>();
+  const runEvidenceByTask = new Map<string, ProvenanceEvent[]>();
   for (const event of uniqueEvents) {
     const paths = new Set([event.target?.path, ...metadataPaths(event)].filter((path): path is string => Boolean(path)));
     for (const path of paths) {
       const entries = eventsByPath.get(path) ?? [];
       entries.push(event);
       eventsByPath.set(path, entries);
+    }
+    if (RUN_EVIDENCE_KINDS.has(event.kind) && isUntargeted(event)) {
+      const index = event.taskId === null ? runEvidenceByAgent : runEvidenceByTask;
+      const key = event.taskId === null ? runAgentKey(event) : runAgentTaskKey(event);
+      const entries = index.get(key) ?? [];
+      entries.push(event);
+      index.set(key, entries);
     }
   }
 
@@ -101,10 +113,10 @@ export function correlateChanges(
   return paths.map((path) => {
     const targeted = (eventsByPath.get(path) ?? []).filter((event) => appliesToPath(event, path));
     const authoring = targeted.filter((event) => AUTHORING_KINDS.has(event.kind));
-    const runEvidence = uniqueEvents.filter((event) =>
-      RUN_EVIDENCE_KINDS.has(event.kind) &&
-      isUntargeted(event) &&
-      authoring.some((authored) => supportsAuthoredEvent(event, authored)));
+    const runEvidence = authoring.flatMap((authored) => [
+      ...(runEvidenceByAgent.get(runAgentKey(authored)) ?? []),
+      ...(authored.taskId ? runEvidenceByTask.get(runAgentTaskKey(authored)) ?? [] : [])
+    ]);
     const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
     const fileSymbols = symbolsByPath.get(path) ?? [];
