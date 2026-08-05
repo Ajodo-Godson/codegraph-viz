@@ -155,7 +155,9 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
         throw new Error("CodeGraph index is missing. Run `codegraph init` or rerun with `codegraph-viz --init`.");
       }
       console.error("Initializing CodeGraph...");
-      await ensureCodeGraphIndex(options.projectPath);
+      await ensureCodeGraphIndex(options.projectPath, undefined, {
+        stdout: options.json ? "stderr" : "inherit"
+      });
       console.error("CodeGraph index ready.");
     }
     if (options.watch && options.json) throw new Error("--watch cannot be combined with --json.");

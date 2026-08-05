@@ -53,7 +53,7 @@ test("--json remains parseable when --init creates the index", async () => {
   await mkdir(projectPath);
   await mkdir(binDir);
   const command = join(binDir, "codegraph");
-  await writeFile(command, "#!/bin/sh\nmkdir -p \"$2/.codegraph\"\ncp \"$FIXTURE_DB\" \"$2/.codegraph/codegraph.db\"\n");
+  await writeFile(command, "#!/bin/sh\necho \"codegraph init progress\"\nmkdir -p \"$2/.codegraph\"\ncp \"$FIXTURE_DB\" \"$2/.codegraph/codegraph.db\"\n");
   await chmod(command, 0o755);
 
   const { stdout, stderr } = await execFileAsync(
@@ -71,6 +71,7 @@ test("--json remains parseable when --init creates the index", async () => {
 
   assert.equal(JSON.parse(stdout).stats.fileCount, 1);
   assert.match(stderr, /Initializing CodeGraph/);
+  assert.match(stderr, /codegraph init progress/);
   assert.match(stderr, /CodeGraph index ready/);
 });
 
