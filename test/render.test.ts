@@ -59,7 +59,7 @@ function graphFixture(): PreparedGraph {
     correlations: [{
       path: "src/</script><img src=x>.ts", commitShas: [], eventIds: ["knowledge"], agentIds: ["child"],
       attributions: [{ agentId: "child", eventIds: ["knowledge"], reasons: ["explicit_file_edit"] }],
-      attributionStatus: "attributed",
+      attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
       symbolIds: ["danger"], evidence: ["explicit_event_target"], overlappingAgents: false,
       states: { inspected: true, proposed: false, modified: true, tested: false, committed: false, reviewed: false, prOpened: false }
     }]

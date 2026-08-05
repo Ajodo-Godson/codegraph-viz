@@ -89,6 +89,7 @@ function browserGraphFixture(): PreparedGraph {
     ],
     git: {
       root: "/fixture", branch: "feature/browser-test", head: "abc123",
+      branchBase: "main", branchChanges: [],
       changes: [
         {
           path: "src/alpha.ts", indexStatus: " ", worktreeStatus: "M", staged: false,
@@ -119,7 +120,7 @@ function browserGraphFixture(): PreparedGraph {
         path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
         agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
         attributions: [{ agentId: "/root/worker", eventIds: ["edit"], reasons: ["explicit_file_edit"] }],
-        attributionStatus: "attributed",
+        attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: true, tested: false,
@@ -130,7 +131,7 @@ function browserGraphFixture(): PreparedGraph {
         path: "test/browser.test.ts", commitShas: [], eventIds: [],
         agentIds: ["/root/worker"], symbolIds: [], evidence: ["explicit_event_target"],
         attributions: [{ agentId: "/root/worker", eventIds: ["fixture-edit"], reasons: ["explicit_file_edit"] }],
-        attributionStatus: "attributed",
+        attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
         overlappingAgents: false,
         states: {
           inspected: true, proposed: false, modified: false, tested: false,
@@ -202,6 +203,7 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.match(filteredReview, /1\s+Untested/);
     assert.match(filteredReview, /1\s+Unreviewed/);
     assert.match(filteredReview, /1\s+Uncommitted/);
+    assert.match(filteredReview, /Active scope: 2 working-tree files/);
     assert.match(filteredReview, /src\/alpha\.ts/);
     assert.match(filteredReview, /Pull request #12/);
     assert.match(filteredReview, /2 checks \| 2 failing \| 1 reviews \| 2 unresolved threads/);
@@ -286,6 +288,31 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.ok(narrowOverflow <= 0, `Narrow page has ${narrowOverflow}px of horizontal overflow`);
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(externalRequests, []);
+  } finally {
+    await browser?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("review uses current branch scope and clearly applies PR-level approval", { timeout: 30_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-branch-review-"));
+  const outputPath = join(directory, "map.html");
+  const graph = browserGraphFixture();
+  graph.git!.changes = [];
+  graph.git!.branchBase = "main";
+  graph.git!.branchChanges = [{ path: "src/alpha.ts", additions: 2, deletions: 1 }];
+  graph.github!.pullRequest!.reviewDecision = "APPROVED";
+  await writeFile(outputPath, renderGraph(graph, { generatedAt: "2026-08-04T14:00:00Z" }));
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ reducedMotion: "reduce" });
+    await page.goto(`file://${outputPath}`);
+    await selectView(page, "review");
+    const review = await page.locator("#secondary-view").innerText();
+    assert.match(review, /Active scope: 1 current-branch file since main/);
+    assert.match(review, /PR-level approval applies to the current-branch files/);
+    assert.match(review, /0\s+Unreviewed/);
   } finally {
     await browser?.close();
     await rm(directory, { recursive: true, force: true });
