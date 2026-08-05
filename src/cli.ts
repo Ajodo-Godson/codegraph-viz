@@ -139,9 +139,9 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
       if (!initialize) {
         throw new Error("CodeGraph index is missing. Run `codegraph init` or rerun with `codegraph-viz --init`.");
       }
-      console.log("Initializing CodeGraph...");
+      console.error("Initializing CodeGraph...");
       await ensureCodeGraphIndex(options.projectPath);
-      console.log("CodeGraph index ready.");
+      console.error("CodeGraph index ready.");
     }
     if (options.json) {
       const opened = openCodeGraph(options.projectPath);
