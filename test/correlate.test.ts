@@ -81,11 +81,27 @@ test("explains direct attribution and labels overlapping and missing evidence", 
   ]), []);
   const a = correlated.find((item) => item.path === "a.ts")!;
   const b = correlated.find((item) => item.path === "b.ts")!;
-  assert.equal(a.attributionStatus, "overlapping");
+  assert.equal(a.attributionStatus, "concurrent_conflict");
+  assert.equal(a.multipleContributors, true);
+  assert.equal(a.concurrentConflict, true);
   assert.deepEqual(a.attributions, [
     { agentId: "agent-a", eventIds: ["proposal"], reasons: ["explicit_edit_proposal"] },
     { agentId: "agent-b", eventIds: ["edit"], reasons: ["explicit_file_edit"] }
   ]);
   assert.equal(b.attributionStatus, "unattributed");
   assert.deepEqual(b.attributions, []);
+});
+
+test("separates historical multiple contributors from concurrent conflicts", () => {
+  const correlated = correlateChanges(snapshot, events([
+    { id: "a-start", timestamp: "2026-08-04T12:00:00Z", runId: "run-a", agentId: "agent-a", kind: "run_started" },
+    { id: "a-edit", timestamp: "2026-08-04T12:01:00Z", runId: "run-a", agentId: "agent-a", kind: "file_edited", target: "a.ts" },
+    { id: "a-finish", timestamp: "2026-08-04T12:02:00Z", runId: "run-a", agentId: "agent-a", kind: "run_finished" },
+    { id: "b-start", timestamp: "2026-08-04T13:00:00Z", runId: "run-b", agentId: "agent-b", kind: "run_started" },
+    { id: "b-edit", timestamp: "2026-08-04T13:01:00Z", runId: "run-b", agentId: "agent-b", kind: "file_edited", target: "a.ts" },
+    { id: "b-finish", timestamp: "2026-08-04T13:02:00Z", runId: "run-b", agentId: "agent-b", kind: "run_finished" }
+  ]), []).find((item) => item.path === "a.ts")!;
+  assert.equal(correlated.multipleContributors, true);
+  assert.equal(correlated.concurrentConflict, false);
+  assert.equal(correlated.attributionStatus, "multiple_contributors");
 });
