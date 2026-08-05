@@ -76,6 +76,8 @@ test("names the missing database path", async () => {
     assert.ok(error instanceof Error);
     assert.match(error.message, /CodeGraph database not found/);
     assert.match(error.message, new RegExp(expectedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(error.message, /codegraph install/);
+    assert.match(error.message, /codegraph init/);
     return true;
   });
 });
