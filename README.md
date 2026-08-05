@@ -33,6 +33,16 @@ open codegraph-map.html       # macOS
 xdg-open codegraph-map.html   # Linux
 ```
 
+## Live
+
+```sh
+codegraph-viz --watch
+```
+
+Open the printed localhost URL. The page reloads when the CodeGraph index, Git
+state, configuration, or agent traces change. The saved HTML remains an offline
+snapshot.
+
 ## MCP
 
 ```sh
