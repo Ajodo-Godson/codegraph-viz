@@ -200,3 +200,20 @@ test("reports malformed, unsupported, and incomplete provider records", async ()
   });
   assert.doesNotMatch(JSON.stringify(result), /private|FutureTool/);
 });
+
+test("counts matched Codex sessions even when no supported event imports", async () => {
+  const project = await mkdtemp(join(tmpdir(), "trace-empty-diagnostic-project-"));
+  const codexRoot = await mkdtemp(join(tmpdir(), "trace-empty-diagnostic-codex-"));
+  await writeFile(join(codexRoot, "unsupported.jsonl"), [
+    JSON.stringify({ type: "session_meta", payload: { id: "run", cwd: project } }),
+    JSON.stringify({ type: "response_item", timestamp: "2026-08-04T12:00:00Z", payload: { type: "function_call", name: "future_tool", call_id: "future", arguments: "{}" } }),
+    "{invalid"
+  ].join("\n"));
+  const result = await discoverAgentTraces({ projectPath: project, providers: ["codex"], roots: { codex: codexRoot } });
+  assert.equal(result.events.length, 0);
+  assert.deepEqual(result.diagnostics[0], {
+    provider: "codex", filesScanned: 1, sessionsMatched: 1, eventsImported: 0, skippedFiles: 0,
+    malformedRecords: 1, unsupportedRecords: 1, incompleteRecords: 0,
+    warnings: ["unsupported.jsonl: 1 malformed record, 1 unsupported tool record"]
+  });
+});

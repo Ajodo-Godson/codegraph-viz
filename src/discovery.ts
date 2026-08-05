@@ -65,6 +65,14 @@ function cwdMatches(value: unknown, projectPath: string): boolean {
   return resolved === projectPath || resolved.startsWith(`${projectPath}${sep}`);
 }
 
+function traceMatches(provider: TraceProvider, records: JsonRecord[], projectPath: string): boolean {
+  if (provider === "claude") return records.some((item) => cwdMatches(item.cwd, projectPath));
+  return records.some((item) => {
+    if (item.type !== "session_meta" && item.type !== "turn_context") return false;
+    return cwdMatches(record(item.payload).cwd, projectPath);
+  });
+}
+
 function commandKind(command: string): string {
   return /(^|\s)(npm|pnpm|yarn|bun)?\s*(run\s+)?(test|check)|\b(pytest|cargo test|go test|node --test|playwright test)\b/i.test(command)
     ? "test_run"
@@ -388,8 +396,9 @@ export async function discoverAgentTraces(options: DiscoverTraceOptions): Promis
         const parsed = parseLines(await readFile(path, "utf8"));
         const records = parsed.records;
         const sourceRef = `${provider}:${basename(path)}`;
-        const events = provider === "codex" ? adaptCodexTrace(records, projectPath, sourceRef) : adaptClaudeTrace(records, projectPath, sourceRef);
-        if (events.length) {
+        const matched = traceMatches(provider, records, projectPath);
+        const events = matched ? (provider === "codex" ? adaptCodexTrace(records, projectPath, sourceRef) : adaptClaudeTrace(records, projectPath, sourceRef)) : [];
+        if (matched) {
           const quality = traceQuality(provider, records, projectPath);
           diagnostic.sessionsMatched += 1;
           diagnostic.eventsImported += events.length;
@@ -402,7 +411,7 @@ export async function discoverAgentTraces(options: DiscoverTraceOptions): Promis
             ...(quality.incomplete ? [countLabel(quality.incomplete, "incomplete tool record")] : [])
           ];
           if (issues.length) diagnostic.warnings.push(`${basename(path)}: ${issues.join(", ")}`);
-          allEvents.push(...events);
+          if (events.length) allEvents.push(...events);
         }
       } catch (error) {
         diagnostic.skippedFiles += 1;
