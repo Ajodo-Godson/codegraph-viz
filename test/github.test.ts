@@ -34,6 +34,26 @@ test("parses only explicitly unresolved review threads", () => {
     { isResolved: false }, { isResolved: true }, { isResolved: false }
   ] } } } } }), 2);
   assert.equal(parseUnresolvedReviewThreads({}), null);
+  assert.equal(parseUnresolvedReviewThreads({ data: { repository: { pullRequest: { reviewThreads: {
+    nodes: [{ isResolved: false }], pageInfo: { hasNextPage: true, endCursor: "next" }
+  } } } } }), null);
+});
+
+test("paginates all review threads before reporting the unresolved count", async () => {
+  const calls: string[][] = [];
+  const runner: GitHubCommandRunner = async (_command, args) => {
+    calls.push(args);
+    if (args[0] === "pr") return JSON.stringify({ number: 7, url: "https://github.com/acme/widget/pull/7", state: "OPEN", isDraft: false });
+    const cursor = args.find((arg) => arg.startsWith("cursor="));
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: cursor
+      ? { nodes: [{ isResolved: false }], pageInfo: { hasNextPage: false, endCursor: null } }
+      : { nodes: [{ isResolved: false }, { isResolved: true }], pageInfo: { hasNextPage: true, endCursor: "page-2" } }
+    } } } });
+  };
+  const result = await inspectGitHub("/project", runner);
+  assert.equal(result.pullRequest?.unresolvedReviewThreads, 2);
+  assert.equal(calls.filter((args) => args[0] === "api").length, 2);
+  assert.ok(calls.at(-1)?.includes("cursor=page-2"));
 });
 
 test("inspects the current branch with an injectable read-only gh runner", async () => {

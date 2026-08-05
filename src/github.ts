@@ -68,6 +68,7 @@ export function parseUnresolvedReviewThreads(value: unknown): number | null {
   const repository = record(data.repository);
   const pullRequest = record(repository.pullRequest);
   const threads = record(pullRequest.reviewThreads);
+  if (record(threads.pageInfo).hasNextPage === true) return null;
   if (!Array.isArray(threads.nodes)) return null;
   return threads.nodes.reduce((count, raw) => count + (record(raw).isResolved === false ? 1 : 0), 0);
 }
@@ -81,7 +82,24 @@ function repositoryFromUrl(url: string): { owner: string; name: string } | null 
   }
 }
 
-const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}`;
+interface ReviewThreadPage {
+  unresolved: number;
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+function parseReviewThreadPage(value: unknown): ReviewThreadPage | null {
+  const threads = record(record(record(record(record(value).data).repository).pullRequest).reviewThreads);
+  if (!Array.isArray(threads.nodes)) return null;
+  const pageInfo = record(threads.pageInfo);
+  return {
+    unresolved: threads.nodes.reduce((count, raw) => count + (record(raw).isResolved === false ? 1 : 0), 0),
+    hasNextPage: pageInfo.hasNextPage === true,
+    endCursor: text(pageInfo.endCursor)
+  };
+}
+
+const THREAD_QUERY = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor}nodes{isResolved}}}}}`;
 
 export async function inspectGitHub(
   projectPath: string,
@@ -103,9 +121,17 @@ export async function inspectGitHub(
     return { pullRequest, diagnostics };
   }
   try {
-    const output = await runner("gh", ["api", "graphql", "-f", `query=${THREAD_QUERY}`, "-F", `owner=${repository.owner}`, "-F", `name=${repository.name}`, "-F", `number=${pullRequest.number}`], projectPath);
-    pullRequest.unresolvedReviewThreads = parseUnresolvedReviewThreads(parseJson(output));
-    if (pullRequest.unresolvedReviewThreads === null) diagnostics.push("GitHub review thread details were unavailable.");
+    let cursor: string | null = null;
+    let unresolved = 0;
+    do {
+      const args = ["api", "graphql", "-f", `query=${THREAD_QUERY}`, "-F", `owner=${repository.owner}`, "-F", `name=${repository.name}`, "-F", `number=${pullRequest.number}`];
+      if (cursor) args.push("-F", `cursor=${cursor}`);
+      const page = parseReviewThreadPage(parseJson(await runner("gh", args, projectPath)));
+      if (!page || (page.hasNextPage && !page.endCursor)) throw new Error("Incomplete review thread page");
+      unresolved += page.unresolved;
+      cursor = page.hasNextPage ? page.endCursor : null;
+    } while (cursor);
+    pullRequest.unresolvedReviewThreads = unresolved;
   } catch {
     diagnostics.push("GitHub review thread details were unavailable.");
   }
