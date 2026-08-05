@@ -27,7 +27,10 @@ export function openCodeGraph(projectOrDatabasePath = process.cwd()): OpenedCode
   const databasePath = resolveDatabasePath(projectOrDatabasePath);
 
   if (!existsSync(databasePath) || !statSync(databasePath).isFile()) {
-    throw new Error(`CodeGraph database not found at ${databasePath}`);
+    throw new Error(
+      `CodeGraph database not found at ${databasePath}. ` +
+      "Install CodeGraph with `codegraph install`, then run `codegraph init` in the project."
+    );
   }
 
   let database: DatabaseSync | undefined;
