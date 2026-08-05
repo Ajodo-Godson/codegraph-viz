@@ -229,7 +229,15 @@ in both themes and reduced-motion mode. It captures both themes and exercises
 desktop and narrow viewports. A later local collector may append events for live
 viewing, but immutable offline snapshots remain the default.
 
-Implementation status: M0 through M9 and M5.1 are complete. Provider traces are
+**M10. Simple setup.** Match CodeGraph's low-friction installation model. A
+repository-owned `install.sh` installs user-local CLI and MCP launchers without
+requiring a checkout. Running `codegraph-viz` inside an indexed project remains
+the complete default workflow. Missing indexes point users to `codegraph
+install` and `codegraph init`, and the installer prints direct Codex and Claude
+MCP registration commands. Script-based uninstall removes only codegraph-viz
+files and launchers.
+
+Implementation status: M0 through M10 and M5.1 are complete. Provider traces are
 discovered automatically from local Codex and Claude sessions or imported with
 `--trace <file>` as canonical JSON or JSONL events. Git inspection is read-only,
 GitHub review evidence is optional and read through `gh`, and attribution is
