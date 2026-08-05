@@ -118,7 +118,7 @@ test("explains evidence requirements and accepts committed change history defens
   assert.match(html, /commit\.changes \|\| commit\.files/);
   assert.match(html, /No working-tree or recent committed changes are available/);
   assert.match(html, /Knowledge appears only when traces record a knowledge_reported event/);
-  assert.match(html, /Review status requires explicit test, commit, and review events/);
+  assert.match(html, /Review status requires explicit trace evidence or clearly labeled PR-level approval/);
   assert.match(html, /No review evidence or changed files are available/);
 });
 
