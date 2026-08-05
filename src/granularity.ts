@@ -2,7 +2,7 @@ import { basename } from "node:path";
 
 import { deriveLayers } from "./layers.ts";
 import type { LayerConfiguration, LayerData } from "./layers.ts";
-import type { ChangeCorrelation, ExtractedGraph, GitSnapshot, GraphLink, GraphSymbol, TraceDiscoveryDiagnostic } from "./types.ts";
+import type { ChangeCorrelation, ExtractedGraph, GitHubEvidenceResult, GitSnapshot, GraphLink, GraphSymbol, TraceDiscoveryDiagnostic } from "./types.ts";
 import type { ProvenanceEvent } from "./types.ts";
 
 export const DEFAULT_MAX_NODES = 400;
@@ -41,6 +41,7 @@ export interface PreparedGraph {
   provenance?: ProvenanceEvent[];
   traceDiagnostics?: TraceDiscoveryDiagnostic[];
   git?: GitSnapshot;
+  github?: GitHubEvidenceResult;
   correlations?: ChangeCorrelation[];
   report: {
     totalNodes: number; shownNodes: number; droppedNodes: number;

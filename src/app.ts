@@ -6,6 +6,7 @@ import { extractGraph } from "./extract.ts";
 import { correlateChanges } from "./correlate.ts";
 import { discoverAgentTraces } from "./discovery.ts";
 import { inspectGit } from "./git.ts";
+import { inspectGitHub } from "./github.ts";
 import { prepareGraph, type PrepareGraphOptions, type PreparedGraph } from "./granularity.ts";
 import type { LayerConfiguration } from "./layers.ts";
 import { openCodeGraph } from "./open.ts";
@@ -88,6 +89,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
       opened.warnings.push(`Git inspection unavailable: ${error instanceof Error ? error.message : String(error)}`);
       graph.correlations = [];
     }
+    graph.github = await inspectGitHub(projectPath);
     await writeAtomic(outputPath, renderGraph(graph, { generatedAt: options.generatedAt }), options.force ?? false);
     const hubs = [...graph.nodes].sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0) || a.id.localeCompare(b.id)).slice(0, 3);
     return {
@@ -102,6 +104,7 @@ export async function generateVisualization(options: GenerateOptions = {}): Prom
         `Provenance events: ${graph.provenance?.length ?? 0}`,
         `Agent traces: ${graph.traceDiagnostics?.map((item) => `${item.provider} ${item.sessionsMatched} sessions/${item.eventsImported} events`).join("; ") || "automatic discovery disabled"}`,
         `Git changes: ${graph.git?.changes.length ?? 0}; attributed: ${graph.correlations.filter((item) => item.agentIds.length).length}`,
+        `GitHub PR: ${graph.github.pullRequest ? `#${graph.github.pullRequest.number} ${graph.github.pullRequest.state}` : "unavailable"}`,
         `Top hubs: ${hubs.map((node) => `${node.id} (${node.degree ?? 0})`).join(", ") || "none"}`,
         `Output: ${outputPath}`
       ]

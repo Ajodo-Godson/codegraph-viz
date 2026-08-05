@@ -109,6 +109,7 @@ export async function runVisualizeTool(value: unknown): Promise<CallToolResult &
     pruning: result.graph.report,
     provenanceEvents: result.graph.provenance?.length ?? 0,
     traceDiagnostics: result.graph.traceDiagnostics ?? [],
+    github: result.graph.github ?? { pullRequest: null, diagnostics: [] },
     warnings: result.warnings,
     summary
   };
