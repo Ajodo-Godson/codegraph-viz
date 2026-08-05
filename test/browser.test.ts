@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -251,6 +251,18 @@ test("offline visualization supports complete agent drill-down and recovery", { 
     assert.ok(firstTheme === "light" || firstTheme === "dark");
     assert.ok(secondTheme === "light" || secondTheme === "dark");
     assert.notEqual(firstTheme, secondTheme);
+
+    const screenshots = [];
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+      const screenshotPath = join(directory, `${theme}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      const screenshot = await readFile(screenshotPath);
+      assert.deepEqual([...screenshot.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+      assert.ok(screenshot.length > 1_000, `${theme} screenshot is unexpectedly small`);
+      screenshots.push(screenshot);
+    }
+    assert.notDeepEqual(screenshots[0], screenshots[1]);
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 0, `Page has ${overflow}px of horizontal overflow`);

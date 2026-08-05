@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { extractGraph } from "../src/extract.ts";
@@ -60,6 +61,14 @@ async function createExtractionFixture() {
     }
   });
 }
+
+test("matches the checked-in golden extraction payload", async () => {
+  const fixture = await createExtractionFixture();
+  const opened = openCodeGraph(fixture.projectPath);
+  const expected = JSON.parse(await readFile(new URL("fixtures/extracted-graph.json", import.meta.url), "utf8"));
+  assert.deepEqual(extractGraph(opened), expected);
+  opened.close();
+});
 
 test("extracts deterministic normalized files and symbols", async () => {
   const fixture = await createExtractionFixture();

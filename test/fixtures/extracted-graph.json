@@ -1,0 +1,49 @@
+{
+  "files": [
+    { "path": "src/a.ts", "language": "TypeScript", "size": 120, "symbolCount": 2, "errors": null },
+    { "path": "src/b.ts", "language": "TypeScript", "size": 240, "symbolCount": 2, "errors": null },
+    { "path": "src/empty.ts", "language": "TypeScript", "size": 0, "symbolCount": 0, "errors": null }
+  ],
+  "links": [
+    { "source": "src/a.ts", "target": "src/b.ts", "weight": 6, "dominantKind": "calls", "kinds": { "calls": 2, "extends": 2, "instantiates": 1, "references": 1 } },
+    { "source": "src/b.ts", "target": "src/a.ts", "weight": 1, "dominantKind": "references", "kinds": { "references": 1 } }
+  ],
+  "symbols": [
+    {
+      "id": "alpha", "kind": "function", "name": "alpha", "qualifiedName": "alpha",
+      "filePath": "src/a.ts", "startLine": 10, "endLine": 14, "signature": "alpha()", "degree": 2,
+      "callers": [],
+      "callees": [
+        { "id": "beta", "name": "beta", "filePath": "src/b.ts" },
+        { "id": "helper", "name": "helper", "filePath": "src/a.ts" }
+      ],
+      "callerCount": 0, "calleeCount": 2
+    },
+    {
+      "id": "helper", "kind": "function", "name": "helper", "qualifiedName": "helper",
+      "filePath": "src/a.ts", "startLine": 20, "endLine": 22, "signature": null, "degree": 1,
+      "callers": [{ "id": "alpha", "name": "alpha", "filePath": "src/a.ts" }],
+      "callees": [], "callerCount": 1, "calleeCount": 0
+    },
+    {
+      "id": "beta", "kind": "function", "name": "beta", "qualifiedName": "beta",
+      "filePath": "src/b.ts", "startLine": 5, "endLine": 8, "signature": "beta(value)", "degree": 1,
+      "callers": [{ "id": "alpha", "name": "alpha", "filePath": "src/a.ts" }],
+      "callees": [], "callerCount": 1, "calleeCount": 0
+    },
+    {
+      "id": "Widget", "kind": "class", "name": "Widget", "qualifiedName": "Widget",
+      "filePath": "src/b.ts", "startLine": 12, "endLine": 30, "signature": null, "degree": 0,
+      "callers": [], "callees": [], "callerCount": 0, "calleeCount": 0
+    }
+  ],
+  "symbolLinks": [
+    { "source": "alpha", "target": "beta", "weight": 2 },
+    { "source": "alpha", "target": "helper", "weight": 1 }
+  ],
+  "stats": {
+    "fileCount": 3, "symbolCount": 4, "linkCount": 2, "crossFileEdgeCount": 7,
+    "edgeKindCounts": { "calls": 2, "extends": 2, "instantiates": 1, "references": 2 },
+    "newestIndexedAt": "2026-08-04T13:00:00Z"
+  }
+}
