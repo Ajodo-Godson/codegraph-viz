@@ -6,6 +6,23 @@ REPO="${CODEGRAPH_VIZ_REPO:-Ajodo-Godson/codegraph-viz}"
 REF="${CODEGRAPH_VIZ_REF:-main}"
 INSTALL_DIR="${CODEGRAPH_VIZ_INSTALL_DIR:-$HOME/.codegraph-viz}"
 BIN_DIR="${CODEGRAPH_VIZ_BIN_DIR:-$HOME/.local/bin}"
+MARKER_NAME=".codegraph-viz-install"
+
+validate_directory() {
+  label="$1"
+  directory="$2"
+  case "$directory" in
+    ""|/|//|.|"$HOME"|"$HOME/") echo "codegraph-viz: refusing to use an unsafe $label directory." >&2; exit 1 ;;
+    /*) ;;
+    *) echo "codegraph-viz: refusing to use a relative $label directory." >&2; exit 1 ;;
+  esac
+}
+
+remove_owned_launcher() {
+  launcher="$1"
+  target="$2"
+  if [ -L "$launcher" ] && [ "$(readlink "$launcher")" = "$target" ]; then rm -f "$launcher"; fi
+}
 
 usage() {
   echo "Usage: install.sh [--uninstall]"
@@ -23,10 +40,19 @@ case "${1:-}" in
     exit 0
     ;;
   --uninstall)
-    case "$INSTALL_DIR" in ""|/|//|.) echo "codegraph-viz: refusing to uninstall with an unsafe install directory." >&2; exit 1 ;; esac
-    case "$BIN_DIR" in ""|/|//|.) echo "codegraph-viz: refusing to uninstall with an unsafe launcher directory." >&2; exit 1 ;; esac
-    rm -f "$BIN_DIR/codegraph-viz" "$BIN_DIR/codegraph-viz-mcp"
-    if [ -d "$INSTALL_DIR" ]; then rm -rf "$INSTALL_DIR"; fi
+    validate_directory "install" "$INSTALL_DIR"
+    validate_directory "launcher" "$BIN_DIR"
+    destination="$INSTALL_DIR/current"
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+      if [ ! -f "$destination/$MARKER_NAME" ]; then
+        echo "codegraph-viz: refusing to remove unowned installation at $destination." >&2
+        exit 1
+      fi
+      rm -rf "$destination"
+    fi
+    remove_owned_launcher "$BIN_DIR/codegraph-viz" "$destination/dist/bin/codegraph-viz.js"
+    remove_owned_launcher "$BIN_DIR/codegraph-viz-mcp" "$destination/dist/bin/codegraph-viz-mcp.js"
+    rmdir "$INSTALL_DIR" 2>/dev/null || true
     echo "codegraph-viz uninstalled."
     exit 0
     ;;
@@ -35,6 +61,9 @@ case "${1:-}" in
     exit 1
     ;;
 esac
+
+validate_directory "install" "$INSTALL_DIR"
+validate_directory "launcher" "$BIN_DIR"
 
 command -v curl >/dev/null 2>&1 || { echo "codegraph-viz: curl is required." >&2; exit 1; }
 command -v tar >/dev/null 2>&1 || { echo "codegraph-viz: tar is required." >&2; exit 1; }
@@ -58,10 +87,29 @@ mkdir -p "$source_dir"
 tar -xzf "$archive" -C "$source_dir" --strip-components=1
 
 (cd "$source_dir" && npm ci --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund)
+touch "$source_dir/$MARKER_NAME"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
 destination="$INSTALL_DIR/current"
-if [ -d "$destination" ]; then rm -rf "$destination"; fi
+if [ -e "$destination" ] || [ -L "$destination" ]; then
+  if [ ! -f "$destination/$MARKER_NAME" ]; then
+    echo "codegraph-viz: refusing to replace unowned installation at $destination." >&2
+    exit 1
+  fi
+fi
+for launcher in "$BIN_DIR/codegraph-viz" "$BIN_DIR/codegraph-viz-mcp"; do
+  if [ -e "$launcher" ] || [ -L "$launcher" ]; then
+    case "$launcher" in
+      "$BIN_DIR/codegraph-viz") expected="$destination/dist/bin/codegraph-viz.js" ;;
+      *) expected="$destination/dist/bin/codegraph-viz-mcp.js" ;;
+    esac
+    if [ ! -L "$launcher" ] || [ "$(readlink "$launcher")" != "$expected" ]; then
+      echo "codegraph-viz: refusing to replace unowned launcher at $launcher." >&2
+      exit 1
+    fi
+  fi
+done
+if [ -e "$destination" ] || [ -L "$destination" ]; then rm -rf "$destination"; fi
 mv "$source_dir" "$destination"
 ln -sf "$destination/dist/bin/codegraph-viz.js" "$BIN_DIR/codegraph-viz"
 ln -sf "$destination/dist/bin/codegraph-viz-mcp.js" "$BIN_DIR/codegraph-viz-mcp"

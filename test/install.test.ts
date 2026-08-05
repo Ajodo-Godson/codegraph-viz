@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, stat, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -17,7 +17,7 @@ test("installer exposes the simple setup contract", async () => {
 });
 
 test("installer includes direct CLI and MCP next steps", async () => {
-  const source = await import("node:fs/promises").then(({ readFile }) => readFile(script, "utf8"));
+  const source = await readFile(script, "utf8");
   assert.match(source, /codegraph-viz/);
   assert.match(source, /codegraph-viz --init/);
   assert.match(source, /codex mcp add codegraph-viz -- codegraph-viz-mcp/);
@@ -30,8 +30,9 @@ test("installer uninstall removes only its installation and launchers", async ()
   const binDir = join(root, "bin");
   await mkdir(join(installDir, "current"), { recursive: true });
   await mkdir(binDir, { recursive: true });
-  await symlink(join(installDir, "current", "codegraph-viz"), join(binDir, "codegraph-viz"));
-  await symlink(join(installDir, "current", "codegraph-viz-mcp"), join(binDir, "codegraph-viz-mcp"));
+  await writeFile(join(installDir, "current", ".codegraph-viz-install"), "");
+  await symlink(join(installDir, "current", "dist/bin/codegraph-viz.js"), join(binDir, "codegraph-viz"));
+  await symlink(join(installDir, "current", "dist/bin/codegraph-viz-mcp.js"), join(binDir, "codegraph-viz-mcp"));
 
   const { stdout } = await execute("sh", [script.pathname, "--uninstall"], {
     env: { ...process.env, CODEGRAPH_VIZ_INSTALL_DIR: installDir, CODEGRAPH_VIZ_BIN_DIR: binDir }
@@ -60,4 +61,34 @@ test("installer refuses unsafe uninstall directories", async () => {
 
   assert.ok(await stat(installDir));
   assert.ok(await stat(binDir));
+});
+
+test("installer refuses home and relative uninstall directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-directory-guard-"));
+  const binDir = join(root, "bin");
+  await mkdir(binDir);
+  await assert.rejects(execute("sh", [script.pathname, "--uninstall"], {
+    env: { ...process.env, HOME: root, CODEGRAPH_VIZ_INSTALL_DIR: root, CODEGRAPH_VIZ_BIN_DIR: binDir }
+  }), /unsafe install directory/);
+  await assert.rejects(execute("sh", [script.pathname, "--uninstall"], {
+    env: { ...process.env, CODEGRAPH_VIZ_INSTALL_DIR: "relative", CODEGRAPH_VIZ_BIN_DIR: binDir }
+  }), /relative install directory/);
+});
+
+test("installer preserves unowned directories and launchers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-owned-uninstall-"));
+  const installDir = join(root, "shared");
+  const binDir = join(root, "bin");
+  await mkdir(join(installDir, "current"), { recursive: true });
+  await mkdir(binDir);
+  const unrelated = join(installDir, "current", "unrelated.txt");
+  const launcher = join(binDir, "codegraph-viz");
+  await writeFile(unrelated, "keep");
+  await writeFile(launcher, "keep");
+
+  await assert.rejects(execute("sh", [script.pathname, "--uninstall"], {
+    env: { ...process.env, CODEGRAPH_VIZ_INSTALL_DIR: installDir, CODEGRAPH_VIZ_BIN_DIR: binDir }
+  }), /unowned installation/);
+  assert.equal(await readFile(unrelated, "utf8"), "keep");
+  assert.equal(await readFile(launcher, "utf8"), "keep");
 });
