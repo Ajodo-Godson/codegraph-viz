@@ -193,7 +193,6 @@
     const gitSnapshot = graph.git || { changes: [], recentCommits: [], branch: null, head: null };
     const githubEvidence = graph.github || { pullRequest: null, diagnostics: [] };
     const traceDiagnostics = graph.traceDiagnostics || [];
-    const eventById = new Map(provenance.map((event) => [event.id, event]));
     const contributionPathsByAgent = new Map();
     const activityFilters = {
       run: document.getElementById("run-filter"),
@@ -303,7 +302,7 @@
 
     function filteredCorrelations(events) {
       if (!filtersActive()) return correlations;
-      const ids = new Set(events.map((event) => event.id));
+      const ids = new Set(events.map((event) => `${event.provider}\0${event.runId}\0${event.id}`));
       return correlations.filter((item) => item.eventIds.some((id) => ids.has(id)));
     }
 
@@ -518,9 +517,8 @@
           change.source,
           attributionStatus,
           ...(correlation ? Object.entries(correlation.states).filter(([, enabled]) => enabled).map(([name]) => name) : []),
-          ...(correlation?.overlappingAgents ? ["overlap"] : []),
           ...(correlation?.evidence || [])
-        ], new Set(["overlap", "concurrent conflict", "incomplete attribution"])));
+        ], new Set(["concurrent conflict", "incomplete attribution"])));
         grid.append(card);
       }
       secondaryView.append(grid);

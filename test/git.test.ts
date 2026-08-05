@@ -118,8 +118,8 @@ test("applies explicit run-level delivery evidence to files authored in that run
   const app = correlateChanges(inspectGit(path), events, []).find((item) => item.path === "app.ts");
   assert.equal(app?.states.tested, true);
   assert.equal(app?.states.reviewed, true);
-  assert.ok(app?.eventIds.includes("test"));
-  assert.ok(!app?.eventIds.includes("other-test"));
+  assert.ok(app?.eventIds.includes("generic\0run-a\0test"));
+  assert.ok(!app?.eventIds.includes("generic\0run-b\0other-test"));
 });
 
 test("preserves unusual and renamed paths with NUL-delimited Git output", async () => {

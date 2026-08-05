@@ -1,6 +1,7 @@
 import type {
   ChangeCorrelation, GitSnapshot, GraphSymbol, ProvenanceEvent
 } from "./types.ts";
+import { provenanceEventKey } from "./provenance.ts";
 
 const AUTHORING_KINDS = new Set(["edit_proposed", "file_edited"]);
 const RUN_EVIDENCE_KINDS = new Set(["test_run", "commit_created", "pr_opened", "review_received"]);
@@ -125,7 +126,7 @@ export function correlateChanges(
       ...(runEvidenceByAgent.get(runAgentKey(authored)) ?? []),
       ...(authored.taskId ? runEvidenceByTask.get(runAgentTaskKey(authored)) ?? [] : [])
     ]);
-    const related = [...new Map([...targeted, ...runEvidence].map((event) => [event.id, event])).values()];
+    const related = [...new Map([...targeted, ...runEvidence].map((event) => [provenanceEventKey(event), event])).values()];
     const agentIds = [...new Set(authoring.map((event) => event.agentId))].sort();
     const multipleContributors = agentIds.length > 1;
     const concurrentConflict = authoring.some((left, index) => authoring.slice(index + 1).some((right) => {
@@ -141,7 +142,7 @@ export function correlateChanges(
       const authored = authoring.filter((event) => event.agentId === agentId);
       return {
         agentId,
-        eventIds: authored.map((event) => event.id).sort(),
+        eventIds: authored.map(provenanceEventKey).sort(),
         reasons: [...new Set(authored.map((event) => event.kind === "file_edited"
           ? "explicit_file_edit" as const
           : "explicit_edit_proposal" as const))].sort()
@@ -153,7 +154,7 @@ export function correlateChanges(
     return {
       path,
       commitShas: commitsByPath.get(path) ?? [],
-      eventIds: related.map((event) => event.id).sort(),
+      eventIds: related.map(provenanceEventKey).sort(),
       agentIds,
       attributions,
       attributionStatus: concurrentConflict ? "concurrent_conflict" : multipleContributors ? "multiple_contributors" : agentIds.length === 1 ? "attributed" : "unattributed",

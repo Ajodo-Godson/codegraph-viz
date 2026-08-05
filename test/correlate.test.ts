@@ -60,7 +60,7 @@ test("retains explicitly targeted evidence independent of its actor", () => {
   const a = correlated.find((item) => item.path === "a.ts")!;
   assert.equal(a.states.reviewed, true);
   assert.deepEqual(a.agentIds, ["author"]);
-  assert.deepEqual(a.eventIds, ["edit", "review"]);
+  assert.deepEqual(a.eventIds, ["generic\0run\0edit", "generic\0run\0review"]);
 });
 
 test("deduplicates equivalent provider events deterministically", () => {
@@ -71,7 +71,7 @@ test("deduplicates equivalent provider events deterministically", () => {
 
   assert.deepEqual(deduplicateCorrelationEvents(duplicates).map((event) => event.id), ["a-original"]);
   assert.deepEqual(deduplicateCorrelationEvents([...duplicates].reverse()).map((event) => event.id), ["a-original"]);
-  assert.deepEqual(correlateChanges(snapshot, duplicates, [])[0]?.eventIds, ["a-original"]);
+  assert.deepEqual(correlateChanges(snapshot, duplicates, [])[0]?.eventIds, ["codex\0run\0a-original"]);
 });
 
 test("explains direct attribution and labels overlapping and missing evidence", () => {
@@ -85,8 +85,8 @@ test("explains direct attribution and labels overlapping and missing evidence", 
   assert.equal(a.multipleContributors, true);
   assert.equal(a.concurrentConflict, true);
   assert.deepEqual(a.attributions, [
-    { agentId: "agent-a", eventIds: ["proposal"], reasons: ["explicit_edit_proposal"] },
-    { agentId: "agent-b", eventIds: ["edit"], reasons: ["explicit_file_edit"] }
+    { agentId: "agent-a", eventIds: ["generic\0run\0proposal"], reasons: ["explicit_edit_proposal"] },
+    { agentId: "agent-b", eventIds: ["generic\0run\0edit"], reasons: ["explicit_file_edit"] }
   ]);
   assert.equal(b.attributionStatus, "unattributed");
   assert.deepEqual(b.attributions, []);
@@ -104,4 +104,13 @@ test("separates historical multiple contributors from concurrent conflicts", () 
   assert.equal(correlated.multipleContributors, true);
   assert.equal(correlated.concurrentConflict, false);
   assert.equal(correlated.attributionStatus, "multiple_contributors");
+});
+
+test("uses provider and run scoped keys for correlated event references", () => {
+  const correlated = correlateChanges(snapshot, normalizeProvenance([
+    { id: "shared", timestamp: "2026-08-04T12:00:00Z", provider: "codex", runId: "run-a", agentId: "agent-a", kind: "file_edited", target: "a.ts" },
+    { id: "shared", timestamp: "2026-08-04T12:01:00Z", provider: "codex", runId: "run-b", agentId: "agent-b", kind: "file_edited", target: "b.ts" }
+  ]), []);
+  assert.deepEqual(correlated.find((item) => item.path === "a.ts")?.eventIds, ["codex\0run-a\0shared"]);
+  assert.deepEqual(correlated.find((item) => item.path === "b.ts")?.eventIds, ["codex\0run-b\0shared"]);
 });

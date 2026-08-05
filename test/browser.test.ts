@@ -117,9 +117,9 @@ function browserGraphFixture(): PreparedGraph {
     },
     correlations: [
       {
-        path: "src/alpha.ts", commitShas: [], eventIds: ["edit", "knowledge"],
+        path: "src/alpha.ts", commitShas: [], eventIds: ["codex\0run-1\0edit", "codex\0run-1\0knowledge"],
         agentIds: ["/root/worker"], symbolIds: ["alpha"], evidence: ["explicit_event_target"],
-        attributions: [{ agentId: "/root/worker", eventIds: ["edit"], reasons: ["explicit_file_edit"] }],
+        attributions: [{ agentId: "/root/worker", eventIds: ["codex\0run-1\0edit"], reasons: ["explicit_file_edit"] }],
         attributionStatus: "attributed", multipleContributors: false, concurrentConflict: false,
         overlappingAgents: false,
         states: {
@@ -313,6 +313,36 @@ test("review uses current branch scope and clearly applies PR-level approval", {
     assert.match(review, /Active scope: 1 current-branch file since main/);
     assert.match(review, /PR-level approval applies to the current-branch files/);
     assert.match(review, /0\s+Unreviewed/);
+  } finally {
+    await browser?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("run filters keep reused native event ids isolated", { timeout: 30_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "codegraph-run-filter-"));
+  const outputPath = join(directory, "map.html");
+  const graph = browserGraphFixture();
+  const base = graph.provenance![2]!;
+  graph.provenance = [
+    { ...base, id: "shared", runId: "run-a", agentId: "agent-a", target: { type: "file", path: "src/alpha.ts" } },
+    { ...base, id: "shared", runId: "run-b", agentId: "agent-b", target: { type: "file", path: "src/beta.ts" } }
+  ];
+  graph.correlations = [
+    { ...graph.correlations![0]!, path: "src/alpha.ts", eventIds: ["codex\0run-a\0shared"], agentIds: ["agent-a"], attributions: [{ agentId: "agent-a", eventIds: ["codex\0run-a\0shared"], reasons: ["explicit_file_edit"] }] },
+    { ...graph.correlations![0]!, path: "src/beta.ts", eventIds: ["codex\0run-b\0shared"], agentIds: ["agent-b"], attributions: [{ agentId: "agent-b", eventIds: ["codex\0run-b\0shared"], reasons: ["explicit_file_edit"] }] }
+  ];
+  await writeFile(outputPath, renderGraph(graph));
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ reducedMotion: "reduce" });
+    await page.goto(`file://${outputPath}`);
+    await page.locator("#run-filter").selectOption("run-a");
+    await selectView(page, "changes");
+    const changes = await page.locator("#secondary-view").innerText();
+    assert.match(changes, /src\/alpha\.ts/);
+    assert.doesNotMatch(changes, /src\/beta\.ts/);
   } finally {
     await browser?.close();
     await rm(directory, { recursive: true, force: true });
