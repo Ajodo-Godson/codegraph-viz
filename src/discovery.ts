@@ -356,7 +356,7 @@ export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sou
   return normalizeProvenance(raw, { provider: "claude", sourceRef });
 }
 
-async function traceFiles(root: string): Promise<string[]> {
+export async function findTraceFiles(root: string): Promise<string[]> {
   const result: string[] = [];
   async function walk(directory: string, depth: number): Promise<void> {
     if (depth > 7) return;
@@ -372,19 +372,22 @@ async function traceFiles(root: string): Promise<string[]> {
   return result.sort();
 }
 
+export function defaultTraceRoot(provider: TraceProvider): string {
+  if (provider === "codex") {
+    return process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions");
+  }
+  return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects");
+}
+
 export async function discoverAgentTraces(options: DiscoverTraceOptions): Promise<TraceDiscoveryResult> {
   const projectPath = resolve(options.projectPath);
   const providers = options.providers?.length ? [...new Set(options.providers)] : ["codex", "claude"] as TraceProvider[];
-  const defaults: Record<TraceProvider, string> = {
-    codex: process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions"),
-    claude: process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects")
-  };
   const diagnostics: TraceDiscoveryDiagnostic[] = [];
   const allEvents: ProvenanceEvent[] = [];
 
   for (const provider of providers) {
-    const root = options.roots?.[provider] ?? defaults[provider];
-    const files = await traceFiles(root);
+    const root = options.roots?.[provider] ?? defaultTraceRoot(provider);
+    const files = await findTraceFiles(root);
     const diagnostic: TraceDiscoveryDiagnostic = {
       provider, filesScanned: files.length, sessionsMatched: 0, eventsImported: 0, skippedFiles: 0,
       malformedRecords: 0, unsupportedRecords: 0, incompleteRecords: 0, warnings: []
