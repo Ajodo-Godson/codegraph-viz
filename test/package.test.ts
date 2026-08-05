@@ -26,7 +26,6 @@ test("packed installation exposes working CLI and MCP stdio binaries", { timeout
     assert.ok(paths.includes("dist/bin/codegraph-viz-mcp.js"));
     assert.ok(paths.includes("dist/src/template.html"));
     assert.ok(paths.every((path: string) => !path.endsWith(".ts") || path.endsWith(".d.ts")));
-    assert.ok(paths.includes("README.md"));
     assert.ok(paths.includes("LICENSE"));
     assert.ok(paths.every((path: string) => !path.startsWith("test/") && !path.startsWith(".github/")));
 

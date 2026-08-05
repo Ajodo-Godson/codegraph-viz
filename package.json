@@ -15,7 +15,6 @@
   },
   "files": [
     "dist/",
-    "README.md",
     "LICENSE"
   ],
   "repository": {
@@ -25,7 +24,7 @@
   "bugs": {
     "url": "https://github.com/Ajodo-Godson/codegraph-viz/issues"
   },
-  "homepage": "https://github.com/Ajodo-Godson/codegraph-viz#readme",
+  "homepage": "https://github.com/Ajodo-Godson/codegraph-viz",
   "publishConfig": {
     "access": "public"
   },
