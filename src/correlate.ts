@@ -53,8 +53,12 @@ function isUntargeted(event: ProvenanceEvent): boolean {
   return !event.target?.path && metadataPaths(event).length === 0;
 }
 
+function runKey(event: ProvenanceEvent): string {
+  return `${event.provider}\0${event.runId}`;
+}
+
 function runAgentKey(event: ProvenanceEvent): string {
-  return `${event.runId}\0${event.agentId}`;
+  return `${runKey(event)}\0${event.agentId}`;
 }
 
 function runAgentTaskKey(event: ProvenanceEvent): string {
@@ -77,8 +81,9 @@ export function correlateChanges(
   const uniqueEvents = deduplicateCorrelationEvents(events);
   const runBounds = new Map<string, { start: string; end: string }>();
   for (const event of uniqueEvents) {
-    const current = runBounds.get(event.runId);
-    runBounds.set(event.runId, {
+    const key = runKey(event);
+    const current = runBounds.get(key);
+    runBounds.set(key, {
       start: !current || event.timestamp < current.start ? event.timestamp : current.start,
       end: !current || event.timestamp > current.end ? event.timestamp : current.end
     });
@@ -131,9 +136,9 @@ export function correlateChanges(
     const multipleContributors = agentIds.length > 1;
     const concurrentConflict = authoring.some((left, index) => authoring.slice(index + 1).some((right) => {
       if (left.agentId === right.agentId) return false;
-      if (left.runId === right.runId) return true;
-      const leftRun = runBounds.get(left.runId);
-      const rightRun = runBounds.get(right.runId);
+      if (runKey(left) === runKey(right)) return true;
+      const leftRun = runBounds.get(runKey(left));
+      const rightRun = runBounds.get(runKey(right));
       return Boolean(leftRun && rightRun &&
         left.timestamp >= rightRun.start && left.timestamp <= rightRun.end &&
         right.timestamp >= leftRun.start && right.timestamp <= leftRun.end);

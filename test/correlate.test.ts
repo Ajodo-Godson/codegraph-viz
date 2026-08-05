@@ -114,3 +114,16 @@ test("uses provider and run scoped keys for correlated event references", () => 
   assert.deepEqual(correlated.find((item) => item.path === "a.ts")?.eventIds, ["codex\0run-a\0shared"]);
   assert.deepEqual(correlated.find((item) => item.path === "b.ts")?.eventIds, ["codex\0run-b\0shared"]);
 });
+
+test("keeps same-named runs from different providers isolated", () => {
+  const correlated = correlateChanges(snapshot, normalizeProvenance([
+    { id: "codex-edit", timestamp: "2026-08-04T12:00:00Z", provider: "codex", runId: "run", agentId: "agent", kind: "file_edited", target: "a.ts" },
+    { id: "claude-edit", timestamp: "2026-08-04T12:01:00Z", provider: "claude", runId: "run", agentId: "other", kind: "file_edited", target: "a.ts" },
+    { id: "claude-test", timestamp: "2026-08-04T12:02:00Z", provider: "claude", runId: "run", agentId: "agent", kind: "test_run" }
+  ]), []).find((item) => item.path === "a.ts")!;
+
+  assert.equal(correlated.concurrentConflict, false);
+  assert.equal(correlated.attributionStatus, "multiple_contributors");
+  assert.equal(correlated.states.tested, false);
+  assert.ok(!correlated.eventIds.includes("claude\0run\0claude-test"));
+});
