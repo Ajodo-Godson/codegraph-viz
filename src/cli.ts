@@ -44,30 +44,64 @@ export function parseArguments(args: string[], cwd = process.cwd()): CliOptions 
   let positional = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === "--json") result.json = true;
-    else if (argument === "--no-agent-traces") result.autoTraces = false;
-    else if (argument === "--force") result.force = true;
-    else if (argument === "-h" || argument === "--help") result.help = true;
-    else if (argument === "-v" || argument === "--version") result.version = true;
-    else if (argument === "-o" || argument === "--output") result.outputPath = valueAfter(args, index++, argument);
-    else if (argument === "--level") {
-      const level = valueAfter(args, index++, argument);
-      if (!["auto", "directory", "file", "symbol"].includes(level)) throw new Error(`Invalid level ${JSON.stringify(level)}.`);
-      result.level = level as CliOptions["level"];
-    } else if (argument === "--max-nodes") {
-      const value = Number(valueAfter(args, index++, argument));
-      if (!Number.isInteger(value) || value < 1) throw new Error("--max-nodes must be a positive integer.");
-      result.maxNodes = value;
-    } else if (argument === "--filter") result.filterPaths?.push(valueAfter(args, index++, argument));
-    else if (argument === "--trace") result.tracePaths.push(valueAfter(args, index++, argument));
-    else if (argument === "--provider") {
-      const provider = valueAfter(args, index++, argument);
-      if (!(["codex", "claude"] as string[]).includes(provider)) throw new Error(`Invalid provider ${JSON.stringify(provider)}.`);
-      result.providers.push(provider as TraceProvider);
+    switch (argument) {
+      case "--json":
+        result.json = true;
+        break;
+      case "--no-agent-traces":
+        result.autoTraces = false;
+        break;
+      case "--force":
+        result.force = true;
+        break;
+      case "-h":
+      case "--help":
+        result.help = true;
+        break;
+      case "-v":
+      case "--version":
+        result.version = true;
+        break;
+      case "-o":
+      case "--output":
+        result.outputPath = valueAfter(args, index, argument);
+        index += 1;
+        break;
+      case "--level": {
+        const level = valueAfter(args, index, argument);
+        index += 1;
+        if (!["auto", "directory", "file", "symbol"].includes(level)) throw new Error(`Invalid level ${JSON.stringify(level)}.`);
+        result.level = level as CliOptions["level"];
+        break;
+      }
+      case "--max-nodes": {
+        const value = Number(valueAfter(args, index, argument));
+        index += 1;
+        if (!Number.isInteger(value) || value < 1) throw new Error("--max-nodes must be a positive integer.");
+        result.maxNodes = value;
+        break;
+      }
+      case "--filter":
+        result.filterPaths?.push(valueAfter(args, index, argument));
+        index += 1;
+        break;
+      case "--trace":
+        result.tracePaths.push(valueAfter(args, index, argument));
+        index += 1;
+        break;
+      case "--provider": {
+        const provider = valueAfter(args, index, argument);
+        index += 1;
+        if (!(["codex", "claude"] as string[]).includes(provider)) throw new Error(`Invalid provider ${JSON.stringify(provider)}.`);
+        result.providers.push(provider as TraceProvider);
+        break;
+      }
+      default:
+        if (argument?.startsWith("-")) throw new Error(`Unknown option ${argument}.`);
+        if (positional) throw new Error("Only one project path may be provided.");
+        result.projectPath = argument ?? cwd;
+        positional = true;
     }
-    else if (argument?.startsWith("-")) throw new Error(`Unknown option ${argument}.`);
-    else if (positional) throw new Error("Only one project path may be provided.");
-    else { result.projectPath = argument ?? cwd; positional = true; }
   }
   return result;
 }
