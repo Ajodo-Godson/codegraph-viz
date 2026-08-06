@@ -149,6 +149,7 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
       console.log(JSON.parse(readFileSync(packagePath, "utf8")).version);
       return 0;
     }
+    if (options.watch && options.json) throw new Error("--watch cannot be combined with --json.");
     if (!hasCodeGraphIndex(options.projectPath)) {
       const initialize = options.initialize || await confirmCodeGraphInitialization(options.projectPath);
       if (!initialize) {
@@ -160,7 +161,6 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
       });
       console.error("CodeGraph index ready.");
     }
-    if (options.watch && options.json) throw new Error("--watch cannot be combined with --json.");
     if (options.watch) {
       const live = await startLiveVisualization({
         ...options,

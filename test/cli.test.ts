@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -73,6 +73,29 @@ test("--json remains parseable when --init creates the index", async () => {
   assert.match(stderr, /Initializing CodeGraph/);
   assert.match(stderr, /codegraph init progress/);
   assert.match(stderr, /CodeGraph index ready/);
+});
+
+test("--watch with --json fails before initializing CodeGraph", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-invalid-mode-"));
+  const projectPath = join(root, "project");
+  const binDir = join(root, "bin");
+  await mkdir(projectPath);
+  await mkdir(binDir);
+  const command = join(binDir, "codegraph");
+  await writeFile(command, `#!/bin/sh\ntouch "${join(root, "initialized")}"\n`);
+  await chmod(command, 0o755);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["bin/codegraph-viz.ts", projectPath, "--watch", "--json", "--init"], {
+      cwd: process.cwd(),
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` }
+    }),
+    (error: Error & { stderr?: string }) => {
+      assert.match(error.stderr ?? "", /--watch cannot be combined with --json/);
+      return true;
+    }
+  );
+  await assert.rejects(readFile(join(root, "initialized")));
 });
 
 test("--watch serves locally until terminated", { timeout: 15_000 }, async () => {
