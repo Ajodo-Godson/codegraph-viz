@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { generateVisualization, type GenerateOptions, type GenerationResult } from "./app.ts";
-import { defaultTraceRoot, findTraceFiles } from "./discovery.ts";
+import { defaultTraceRoot, findMatchingTraceFiles } from "./discovery.ts";
 import type { TraceProvider } from "./types.ts";
 
 const execute = promisify(execFile);
@@ -45,7 +45,7 @@ export async function inputFingerprint(options: GenerateOptions): Promise<string
       : ["codex", "claude"] as TraceProvider[];
     for (const provider of providers) {
       const root = options.traceRoots?.[provider] ?? defaultTraceRoot(provider);
-      paths.push(...await findTraceFiles(root));
+      paths.push(...await findMatchingTraceFiles(provider, root, projectPath));
     }
   }
   const identities = await Promise.all([...new Set(paths)].sort().map(fileIdentity));

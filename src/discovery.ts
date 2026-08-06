@@ -379,6 +379,25 @@ export function defaultTraceRoot(provider: TraceProvider): string {
   return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects");
 }
 
+export async function findMatchingTraceFiles(
+  provider: TraceProvider,
+  root: string,
+  projectPath: string
+): Promise<string[]> {
+  const resolvedProjectPath = resolve(projectPath);
+  const matched: string[] = [];
+  for (const path of await findTraceFiles(root)) {
+    try {
+      const info = await stat(path);
+      if (info.size > MAX_TRACE_BYTES) continue;
+      if (traceMatches(provider, parseLines(await readFile(path, "utf8")).records, resolvedProjectPath)) matched.push(path);
+    } catch {
+      // Discovery reports unreadable files; fingerprinting only needs usable inputs.
+    }
+  }
+  return matched;
+}
+
 export async function discoverAgentTraces(options: DiscoverTraceOptions): Promise<TraceDiscoveryResult> {
   const projectPath = resolve(options.projectPath);
   const providers = options.providers?.length ? [...new Set(options.providers)] : ["codex", "claude"] as TraceProvider[];

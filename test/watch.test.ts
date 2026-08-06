@@ -19,7 +19,14 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db-1");
   await writeFile(join(projectPath, "src.ts"), "export const value = 1;\n");
   await writeFile(join(projectPath, "codegraph-viz.json"), "{}");
-  await writeFile(join(traceRoot, "session.jsonl"), "event-1\n");
+  await writeFile(join(traceRoot, "session.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "run", cwd: projectPath }
+  })}\n`);
+  await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "other", cwd: join(root, "other-project") }
+  })}\n`);
   await writeFile(explicitTrace, "explicit-1\n");
   execFileSync("git", ["init", "-b", "main"], { cwd: projectPath, stdio: "ignore" });
   execFileSync("git", ["config", "user.name", "Fixture User"], { cwd: projectPath });
@@ -38,7 +45,15 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   const indexed = await inputFingerprint(options);
   await writeFile(join(projectPath, "src.ts"), "export const value = 222;\n");
   const committed = await inputFingerprint(options);
-  await writeFile(join(traceRoot, "session.jsonl"), "event-222\n");
+  await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "other", cwd: join(root, "other-project") }
+  })}\nextra\n`);
+  assert.equal(await inputFingerprint(options), committed);
+  await writeFile(join(traceRoot, "session.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "run", cwd: projectPath }
+  })}\nextra\n`);
   const traced = await inputFingerprint(options);
   await writeFile(explicitTrace, "explicit-222\n");
   const explicit = await inputFingerprint(options);
