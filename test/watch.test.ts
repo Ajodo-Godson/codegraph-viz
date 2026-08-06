@@ -87,6 +87,7 @@ test("live server reloads after trace changes while keeping the snapshot offline
   const outputPath = join(root, "map.html");
   const tracePath = join(root, "events.jsonl");
   await writeFile(tracePath, "");
+  await writeFile(outputPath, "previous snapshot");
   let resolveUpdate: (() => void) | undefined;
   const updated = new Promise<void>((resolvePromise) => { resolveUpdate = resolvePromise; });
   const live = await startLiveVisualization({
@@ -100,6 +101,7 @@ test("live server reloads after trace changes while keeping the snapshot offline
     onUpdate: () => resolveUpdate?.()
   });
   try {
+    assert.doesNotMatch(await readFile(outputPath, "utf8"), /previous snapshot/);
     const served = await fetch(live.url).then((response) => response.text());
     assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
     assert.match(served, /connect-src 'self'/);
