@@ -107,8 +107,8 @@ function injectLiveReload(html: string): string {
 }
 
 export async function startLiveVisualization(options: LiveVisualizationOptions): Promise<LiveVisualization> {
-  const initial = await generateVisualization({ ...options, force: true });
   let fingerprint = await inputFingerprint(options);
+  const initial = await generateVisualization({ ...options, force: true });
   let lastRefresh = Date.now();
   let refreshing = false;
   const clients = new Set<ServerResponse>();
