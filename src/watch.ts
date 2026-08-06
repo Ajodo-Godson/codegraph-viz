@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { generateVisualization, type GenerateOptions, type GenerationResult } from "./app.ts";
@@ -20,13 +20,32 @@ async function fileIdentity(path: string): Promise<string> {
   }
 }
 
-async function gitIdentity(projectPath: string): Promise<string> {
+async function contentIdentity(path: string): Promise<string> {
   try {
-    const [{ stdout: head }, { stdout: status }] = await Promise.all([
+    return `${path}\0${createHash("sha256").update(await readFile(path)).digest("hex")}`;
+  } catch {
+    return `${path}\0missing`;
+  }
+}
+
+async function gitIdentity(projectPath: string, outputPath: string): Promise<string> {
+  try {
+    const outputRelative = relative(projectPath, outputPath);
+    const excludesOutput = outputRelative && !outputRelative.startsWith("..") && !isAbsolute(outputRelative);
+    const diffArgs = ["diff", "--binary", "HEAD", "--", "."];
+    if (excludesOutput) diffArgs.push(`:(exclude)${outputRelative}`);
+    const [{ stdout: head }, { stdout: status }, { stdout: diff }, { stdout: untracked }] = await Promise.all([
       execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: projectPath, encoding: "utf8" }),
-      execute("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: projectPath, encoding: "utf8" })
+      execute("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: projectPath, encoding: "utf8" }),
+      execute("git", diffArgs, { cwd: projectPath, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }),
+      execute("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: projectPath, encoding: "utf8" })
     ]);
-    return `${head.trim()}\0${status}`;
+    const untrackedPaths = untracked.split("\0").filter(Boolean)
+      .map((path) => resolve(projectPath, path))
+      .filter((path) => path !== outputPath)
+      .sort();
+    const untrackedIdentities = await Promise.all(untrackedPaths.map(contentIdentity));
+    return `${head.trim()}\0${status}\0${diff}\0${untrackedIdentities.join("\n")}`;
   } catch {
     return "git-unavailable";
   }
@@ -34,6 +53,7 @@ async function gitIdentity(projectPath: string): Promise<string> {
 
 export async function inputFingerprint(options: GenerateOptions): Promise<string> {
   const projectPath = resolve(options.projectPath ?? process.cwd());
+  const outputPath = resolve(options.outputPath ?? "codegraph-map.html");
   const paths = [
     join(projectPath, ".codegraph", "codegraph.db"),
     join(projectPath, ".codegraph", "codegraph.db-wal"),
@@ -51,7 +71,7 @@ export async function inputFingerprint(options: GenerateOptions): Promise<string
     }
   }
   const identities = await Promise.all([...new Set(paths)].sort().map(fileIdentity));
-  identities.push(await gitIdentity(projectPath));
+  identities.push(await gitIdentity(projectPath, outputPath));
   return createHash("sha256").update(identities.join("\n")).digest("hex");
 }
 

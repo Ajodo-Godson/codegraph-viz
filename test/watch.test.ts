@@ -47,11 +47,17 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   const walIndexed = await inputFingerprint(options);
   await writeFile(join(projectPath, "src.ts"), "export const value = 222;\n");
   const committed = await inputFingerprint(options);
+  await writeFile(join(projectPath, "src.ts"), "export const value = 333;\n");
+  const editedAgain = await inputFingerprint(options);
+  await writeFile(join(projectPath, "untracked.ts"), "export const untracked = 1;\n");
+  const untracked = await inputFingerprint(options);
+  await writeFile(join(projectPath, "untracked.ts"), "export const untracked = 2;\n");
+  const untrackedAgain = await inputFingerprint(options);
   await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
     type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
     payload: { id: "other", cwd: join(root, "other-project") }
   })}\nextra\n`);
-  assert.equal(await inputFingerprint(options), committed);
+  assert.equal(await inputFingerprint(options), untrackedAgain);
   await writeFile(join(traceRoot, "session.jsonl"), `${JSON.stringify({
     type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
     payload: { id: "run", cwd: projectPath }
@@ -62,7 +68,10 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   await writeFile(join(projectPath, "codegraph-viz.json"), "{\"rename\":{}}\n");
   const configured = await inputFingerprint(options);
 
-  assert.equal(new Set([initial, indexed, walIndexed, committed, traced, explicit, configured]).size, 7);
+  assert.equal(new Set([
+    initial, indexed, walIndexed, committed, editedAgain, untracked,
+    untrackedAgain, traced, explicit, configured
+  ]).size, 10);
 });
 
 test("input fingerprint can exclude automatic provider traces", async () => {
