@@ -153,6 +153,21 @@ test("live server reloads after trace changes while keeping the snapshot offline
   try {
     assert.match(live.warnings.join("\n"), /index_state is "indexing"/);
     assert.doesNotMatch(await readFile(outputPath, "utf8"), /previous snapshot/);
+
+    for (const path of ["", "__codegraph_viz_events"]) {
+      const rejected = await new Promise<{ statusCode?: number; body: string }>((resolvePromise, reject) => {
+        const request = get(`${live.url}${path}`, { headers: { Host: "attacker.example" } }, (response) => {
+          response.setEncoding("utf8");
+          let body = "";
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolvePromise({ statusCode: response.statusCode, body }));
+        });
+        request.on("error", reject);
+      });
+      assert.equal(rejected.statusCode, 421);
+      assert.doesNotMatch(rejected.body, /CodeGraph map/);
+    }
+
     const served = await fetch(live.url).then((response) => response.text());
     assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
     assert.match(served, /connect-src 'self'/);

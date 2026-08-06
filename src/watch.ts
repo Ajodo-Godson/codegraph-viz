@@ -115,8 +115,14 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
   const initial = await generateVisualization({ ...options, force: true });
   let lastRefresh = Date.now();
   let refreshing = false;
+  let expectedHost = "";
   const clients = new Set<ServerResponse>();
   const server = createServer(async (request, response) => {
+    if (request.headers.host !== expectedHost) {
+      response.writeHead(421, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Misdirected request");
+      return;
+    }
     if (request.method !== "GET") {
       response.writeHead(405, { Allow: "GET" });
       response.end("Method not allowed");
@@ -151,6 +157,12 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
     server.once("error", reject);
     server.listen(options.port ?? 4173, "127.0.0.1", () => resolvePromise());
   });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("Unable to determine live visualization address.");
+  }
+  expectedHost = `127.0.0.1:${address.port}`;
 
   const refresh = async (): Promise<void> => {
     if (refreshing) return;
@@ -171,8 +183,6 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
     }
   };
   const timer = setInterval(() => void refresh(), options.intervalMs ?? 1_000);
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Unable to determine live visualization address.");
   return {
     url: `http://127.0.0.1:${address.port}/`,
     outputPath: initial.outputPath,
