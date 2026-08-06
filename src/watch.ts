@@ -153,7 +153,8 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
       return;
     }
     try {
-      const html = injectLiveReload(await readFile(initial.outputPath, "utf8"), generation);
+      const servedGeneration = generation;
+      const html = injectLiveReload(await readFile(initial.outputPath, "utf8"), servedGeneration);
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       response.end(html);
     } catch (error) {
