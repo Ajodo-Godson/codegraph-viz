@@ -379,6 +379,14 @@ export function defaultTraceRoot(provider: TraceProvider): string {
   return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects");
 }
 
+interface TraceMatchCacheEntry {
+  size: bigint;
+  mtimeNs: bigint;
+  matched: boolean;
+}
+
+const traceMatchCache = new Map<string, TraceMatchCacheEntry>();
+
 export async function findMatchingTraceFiles(
   provider: TraceProvider,
   root: string,
@@ -388,9 +396,17 @@ export async function findMatchingTraceFiles(
   const matched: string[] = [];
   for (const path of await findTraceFiles(root)) {
     try {
-      const info = await stat(path);
+      const info = await stat(path, { bigint: true });
       if (info.size > MAX_TRACE_BYTES) continue;
-      if (traceMatches(provider, parseLines(await readFile(path, "utf8")).records, resolvedProjectPath)) matched.push(path);
+      const key = `${provider}\0${resolvedProjectPath}\0${path}`;
+      const cached = traceMatchCache.get(key);
+      let isMatch = cached?.size === info.size && cached.mtimeNs === info.mtimeNs
+        ? cached.matched
+        : traceMatches(provider, parseLines(await readFile(path, "utf8")).records, resolvedProjectPath);
+      if (!cached || cached.size !== info.size || cached.mtimeNs !== info.mtimeNs) {
+        traceMatchCache.set(key, { size: info.size, mtimeNs: info.mtimeNs, matched: isMatch });
+      }
+      if (isMatch) matched.push(path);
     } catch {
       // Discovery reports unreadable files; fingerprinting only needs usable inputs.
     }
