@@ -101,13 +101,16 @@ export interface LiveVisualization {
 }
 
 const EVENTS_PATH = "/__codegraph_viz_events";
-const LIVE_RELOAD_SCRIPT = `<script>(()=>{const events=new EventSource("${EVENTS_PATH}");events.addEventListener("reload",()=>location.reload());})();</script>`;
+function liveReloadScript(generation: number): string {
+  return `<script>(()=>{const events=new EventSource("${EVENTS_PATH}?generation=${generation}");events.addEventListener("reload",()=>location.reload());})();</script>`;
+}
 
-function injectLiveReload(html: string): string {
+function injectLiveReload(html: string, generation: number): string {
   const liveCsp = html.replace("default-src 'none';", "default-src 'none'; connect-src 'self';");
+  const script = liveReloadScript(generation);
   return liveCsp.includes("</body>")
-    ? liveCsp.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`)
-    : `${liveCsp}${LIVE_RELOAD_SCRIPT}`;
+    ? liveCsp.replace("</body>", `${script}</body>`)
+    : `${liveCsp}${script}`;
 }
 
 export async function startLiveVisualization(options: LiveVisualizationOptions): Promise<LiveVisualization> {
@@ -115,6 +118,7 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
   const initial = await generateVisualization({ ...options, force: true });
   let lastRefresh = Date.now();
   let refreshing = false;
+  let generation = 0;
   let expectedHost = "";
   const clients = new Set<ServerResponse>();
   const server = createServer(async (request, response) => {
@@ -128,24 +132,28 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
       response.end("Method not allowed");
       return;
     }
-    if (request.url === EVENTS_PATH) {
+    const requestUrl = new URL(request.url ?? "/", `http://${expectedHost}`);
+    if (requestUrl.pathname === EVENTS_PATH) {
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive"
       });
       response.write("retry: 1000\n\n");
+      if (requestUrl.searchParams.get("generation") !== String(generation)) {
+        response.write("event: reload\ndata: missed-update\n\n");
+      }
       clients.add(response);
       request.on("close", () => clients.delete(response));
       return;
     }
-    if (request.url !== "/") {
+    if (requestUrl.pathname !== "/") {
       response.writeHead(404);
       response.end("Not found");
       return;
     }
     try {
-      const html = injectLiveReload(await readFile(initial.outputPath, "utf8"));
+      const html = injectLiveReload(await readFile(initial.outputPath, "utf8"), generation);
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       response.end(html);
     } catch (error) {
@@ -174,6 +182,7 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
       const result = await generateVisualization({ ...options, outputPath: initial.outputPath, force: true });
       fingerprint = nextFingerprint;
       lastRefresh = Date.now();
+      generation += 1;
       for (const client of clients) client.write("event: reload\ndata: updated\n\n");
       options.onUpdate?.(result);
     } catch (error) {

@@ -169,16 +169,32 @@ test("live server reloads after trace changes while keeping the snapshot offline
     }
 
     const served = await fetch(live.url).then((response) => response.text());
-    assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
+    assert.match(served, /EventSource\("\/__codegraph_viz_events\?generation=0"\)/);
     assert.match(served, /connect-src 'self'/);
     const snapshot = await readFile(outputPath, "utf8");
     assert.doesNotMatch(snapshot, /EventSource/);
     assert.doesNotMatch(snapshot, /connect-src/);
 
+    const missedUpdate = new Promise<void>((resolvePromise, reject) => {
+      const request = get(`${live.url}__codegraph_viz_events?generation=-1`, (response) => {
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          if (chunk.includes("event: reload")) {
+            request.destroy();
+            resolvePromise();
+          }
+        });
+      });
+      request.on("error", (error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ECONNRESET") reject(error);
+      });
+    });
+    await missedUpdate;
+
     let resolveConnected: (() => void) | undefined;
     const connected = new Promise<void>((resolvePromise) => { resolveConnected = resolvePromise; });
     const reloaded = new Promise<void>((resolvePromise, reject) => {
-      const request = get(`${live.url}__codegraph_viz_events`, (response) => {
+      const request = get(`${live.url}__codegraph_viz_events?generation=0`, (response) => {
         response.setEncoding("utf8");
         response.on("data", (chunk) => {
           resolveConnected?.();
