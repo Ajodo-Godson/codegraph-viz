@@ -86,6 +86,7 @@ export interface LiveVisualizationOptions extends GenerateOptions {
 export interface LiveVisualization {
   url: string;
   outputPath: string;
+  warnings: string[];
   close(): Promise<void>;
 }
 
@@ -165,6 +166,7 @@ export async function startLiveVisualization(options: LiveVisualizationOptions):
   return {
     url: `http://127.0.0.1:${address.port}/`,
     outputPath: initial.outputPath,
+    warnings: initial.warnings,
     async close() {
       clearInterval(timer);
       for (const client of clients) client.end();

@@ -164,9 +164,13 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
     if (options.watch) {
       const live = await startLiveVisualization({
         ...options,
-        onUpdate: (result) => console.log(`Updated: ${result.graph.provenance?.length ?? 0} provenance events`),
+        onUpdate: (result) => {
+          for (const warning of result.warnings) console.error(`Warning: ${warning}`);
+          console.log(`Updated: ${result.graph.provenance?.length ?? 0} provenance events`);
+        },
         onError: (error) => console.error(`Live update failed: ${error.message}`)
       });
+      for (const warning of live.warnings) console.error(`Warning: ${warning}`);
       console.log(`Live visualization: ${live.url}`);
       console.log(`Offline snapshot: ${live.outputPath}`);
       console.log("Watching for CodeGraph, Git, and agent trace changes. Press Ctrl+C to stop.");

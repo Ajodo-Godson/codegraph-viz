@@ -89,7 +89,7 @@ test("input fingerprint can exclude automatic provider traces", async () => {
 });
 
 test("live server reloads after trace changes while keeping the snapshot offline", { timeout: 15_000 }, async () => {
-  const fixture = await createCodeGraphProject({ populate(database) {
+  const fixture = await createCodeGraphProject({ indexState: "indexing", populate(database) {
     insertFile(database, { path: "src/index.ts", nodeCount: 0 });
   } });
   const root = await mkdtemp(join(tmpdir(), "codegraph-viz-live-"));
@@ -98,6 +98,7 @@ test("live server reloads after trace changes while keeping the snapshot offline
   await writeFile(tracePath, "");
   await writeFile(outputPath, "previous snapshot");
   let resolveUpdate: (() => void) | undefined;
+  let updatedWarnings: string[] = [];
   const updated = new Promise<void>((resolvePromise) => { resolveUpdate = resolvePromise; });
   const live = await startLiveVisualization({
     projectPath: fixture.projectPath,
@@ -107,9 +108,13 @@ test("live server reloads after trace changes while keeping the snapshot offline
     intervalMs: 20,
     remoteRefreshMs: 60_000,
     port: 0,
-    onUpdate: () => resolveUpdate?.()
+    onUpdate: (result) => {
+      updatedWarnings = result.warnings;
+      resolveUpdate?.();
+    }
   });
   try {
+    assert.match(live.warnings.join("\n"), /index_state is "indexing"/);
     assert.doesNotMatch(await readFile(outputPath, "utf8"), /previous snapshot/);
     const served = await fetch(live.url).then((response) => response.text());
     assert.match(served, /EventSource\("\/__codegraph_viz_events"\)/);
@@ -136,6 +141,7 @@ test("live server reloads after trace changes while keeping the snapshot offline
       agentId: "root", kind: "file_read", target: "src/index.ts"
     })}\n`);
     await Promise.all([updated, reloaded]);
+    assert.match(updatedWarnings.join("\n"), /index_state is "indexing"/);
     assert.match(await readFile(outputPath, "utf8"), /live-event/);
   } finally {
     await live.close();

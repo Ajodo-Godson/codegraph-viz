@@ -76,7 +76,7 @@ test("--json remains parseable when --init creates the index", async () => {
 });
 
 test("--watch serves locally until terminated", { timeout: 15_000 }, async () => {
-  const fixture = await createCodeGraphProject({ populate(database) {
+  const fixture = await createCodeGraphProject({ indexState: "indexing", populate(database) {
     insertFile(database, { path: "src/index.ts", nodeCount: 0 });
   } });
   const root = await mkdtemp(join(tmpdir(), "codegraph-viz-cli-watch-"));
@@ -87,8 +87,11 @@ test("--watch serves locally until terminated", { timeout: 15_000 }, async () =>
   ], { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
   const exited = new Promise<number | null>((resolvePromise) => child.on("exit", resolvePromise));
   let stdout = "";
+  let stderr = "";
   child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
   try {
     const url = await new Promise<string>((resolvePromise, reject) => {
       const timeout = setTimeout(() => reject(new Error(`Timed out waiting for live URL. Output: ${stdout}`)), 10_000);
@@ -99,6 +102,7 @@ test("--watch serves locally until terminated", { timeout: 15_000 }, async () =>
       child.on("exit", (code) => { clearTimeout(timeout); reject(new Error(`Watch process exited early with ${String(code)}.`)); });
     });
     assert.match(await fetch(url).then((response) => response.text()), /EventSource/);
+    assert.match(stderr, /Warning: CodeGraph index_state is "indexing"/);
   } finally {
     child.kill("SIGTERM");
   }
