@@ -38,8 +38,12 @@ async function gitIdentity(projectPath: string, outputPath: string): Promise<str
       stagedArgs.push(`:(exclude)${outputRelative}`);
       unstagedArgs.push(`:(exclude)${outputRelative}`);
     }
-    const head = await execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: projectPath, encoding: "utf8" })
-      .then(({ stdout }) => stdout.trim(), () => "unborn");
+    const [head, branch] = await Promise.all([
+      execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: projectPath, encoding: "utf8" })
+        .then(({ stdout }) => stdout.trim(), () => "unborn"),
+      execute("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: projectPath, encoding: "utf8" })
+        .then(({ stdout }) => stdout.trim(), () => "detached")
+    ]);
     const [{ stdout: status }, { stdout: staged }, { stdout: unstaged }, { stdout: untracked }] = await Promise.all([
       execute("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: projectPath, encoding: "utf8" }),
       execute("git", stagedArgs, { cwd: projectPath, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }),
@@ -51,7 +55,7 @@ async function gitIdentity(projectPath: string, outputPath: string): Promise<str
       .filter((path) => path !== outputPath)
       .sort();
     const untrackedIdentities = await Promise.all(untrackedPaths.map(contentIdentity));
-    return `${head}\0${status}\0${staged}\0${unstaged}\0${untrackedIdentities.join("\n")}`;
+    return `${head}\0${branch}\0${status}\0${staged}\0${unstaged}\0${untrackedIdentities.join("\n")}`;
   } catch {
     return "git-unavailable";
   }
