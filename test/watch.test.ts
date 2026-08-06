@@ -88,6 +88,23 @@ test("input fingerprint can exclude automatic provider traces", async () => {
   assert.equal(await inputFingerprint(options), initial);
 });
 
+test("input fingerprint tracks changes before the first Git commit", async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-unborn-"));
+  await mkdir(join(projectPath, ".codegraph"), { recursive: true });
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db");
+  await writeFile(join(projectPath, "app.ts"), "export const value = 1;\n");
+  execFileSync("git", ["init", "-b", "main"], { cwd: projectPath, stdio: "ignore" });
+  const options = { projectPath, autoTraces: false };
+
+  const initial = await inputFingerprint(options);
+  await writeFile(join(projectPath, "app.ts"), "export const value = 2;\n");
+  const edited = await inputFingerprint(options);
+  execFileSync("git", ["add", "--", "app.ts"], { cwd: projectPath });
+  const staged = await inputFingerprint(options);
+
+  assert.equal(new Set([initial, edited, staged]).size, 3);
+});
+
 test("live server reloads after trace changes while keeping the snapshot offline", { timeout: 15_000 }, async () => {
   const fixture = await createCodeGraphProject({ indexState: "indexing", populate(database) {
     insertFile(database, { path: "src/index.ts", nodeCount: 0 });

@@ -32,12 +32,18 @@ async function gitIdentity(projectPath: string, outputPath: string): Promise<str
   try {
     const outputRelative = relative(projectPath, outputPath);
     const excludesOutput = outputRelative && !outputRelative.startsWith("..") && !isAbsolute(outputRelative);
-    const diffArgs = ["diff", "--binary", "HEAD", "--", "."];
-    if (excludesOutput) diffArgs.push(`:(exclude)${outputRelative}`);
-    const [{ stdout: head }, { stdout: status }, { stdout: diff }, { stdout: untracked }] = await Promise.all([
-      execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: projectPath, encoding: "utf8" }),
+    const stagedArgs = ["diff", "--binary", "--cached", "--", "."];
+    const unstagedArgs = ["diff", "--binary", "--", "."];
+    if (excludesOutput) {
+      stagedArgs.push(`:(exclude)${outputRelative}`);
+      unstagedArgs.push(`:(exclude)${outputRelative}`);
+    }
+    const head = await execute("git", ["rev-parse", "--verify", "HEAD"], { cwd: projectPath, encoding: "utf8" })
+      .then(({ stdout }) => stdout.trim(), () => "unborn");
+    const [{ stdout: status }, { stdout: staged }, { stdout: unstaged }, { stdout: untracked }] = await Promise.all([
       execute("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: projectPath, encoding: "utf8" }),
-      execute("git", diffArgs, { cwd: projectPath, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }),
+      execute("git", stagedArgs, { cwd: projectPath, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }),
+      execute("git", unstagedArgs, { cwd: projectPath, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }),
       execute("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: projectPath, encoding: "utf8" })
     ]);
     const untrackedPaths = untracked.split("\0").filter(Boolean)
@@ -45,7 +51,7 @@ async function gitIdentity(projectPath: string, outputPath: string): Promise<str
       .filter((path) => path !== outputPath)
       .sort();
     const untrackedIdentities = await Promise.all(untrackedPaths.map(contentIdentity));
-    return `${head.trim()}\0${status}\0${diff}\0${untrackedIdentities.join("\n")}`;
+    return `${head}\0${status}\0${staged}\0${unstaged}\0${untrackedIdentities.join("\n")}`;
   } catch {
     return "git-unavailable";
   }
