@@ -85,6 +85,18 @@ test("renders a self-contained page with safely embedded payload", () => {
   assert.doesNotMatch(html, /<link\b/i);
 });
 
+test("treats JavaScript replacement tokens in payload values literally", () => {
+  const graph = graphFixture();
+  const replacementTokens = "shell patterns: $& $' $` $$";
+  graph.provenance![0]!.summary = replacementTokens;
+
+  const html = renderGraph(graph, { generatedAt: "2026-08-04T14:00:00Z" });
+  const payloadMatch = html.match(/<script id="graph-data" type="application\/json">([^]*?)<\/script>/);
+
+  assert.ok(payloadMatch);
+  assert.equal(JSON.parse(payloadMatch[1]).provenance[0].summary, replacementTokens);
+});
+
 test("includes interaction, completeness, theme, and accessibility controls", () => {
   const html = renderGraph(graphFixture(), { generatedAt: "2026-08-04T14:00:00Z" });
 

@@ -41,8 +41,8 @@ export function renderGraph(
     : `Showing all ${graph.report.totalNodes} ${nodeName} nodes`;
 
   return template
-    .replace("__GRAPH_PAYLOAD__", serializePayload(graph))
-    .replace("__GENERATED_AT__", escapeHtml(generatedAt))
-    .replace("__INDEXED_AT__", escapeHtml(indexedAt))
-    .replace("__COMPLETENESS__", escapeHtml(completeness));
+    .replace("__GRAPH_PAYLOAD__", () => serializePayload(graph))
+    .replace("__GENERATED_AT__", () => escapeHtml(generatedAt))
+    .replace("__INDEXED_AT__", () => escapeHtml(indexedAt))
+    .replace("__COMPLETENESS__", () => escapeHtml(completeness));
 }
