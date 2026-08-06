@@ -9,13 +9,14 @@ import { parseArguments } from "../src/cli.ts";
 import { createCodeGraphProject, insertFile, insertNode } from "./fixtures.ts";
 
 test("parses complete CLI graph options", () => {
-  assert.deepEqual(parseArguments(["repo", "-o", "map.html", "--level", "symbol", "--max-nodes", "25", "--filter", "src", "--trace", "events.jsonl", "--provider", "codex", "--no-agent-traces", "--init", "--force"]), {
+  assert.deepEqual(parseArguments(["repo", "-o", "map.html", "--level", "symbol", "--max-nodes", "25", "--filter", "src", "--trace", "events.jsonl", "--provider", "codex", "--no-agent-traces", "--init", "--watch", "--port", "4321", "--force"]), {
     projectPath: "repo", outputPath: "map.html", level: "symbol", maxNodes: 25,
-    filterPaths: ["src"], tracePaths: ["events.jsonl"], autoTraces: false, providers: ["codex"], initialize: true, json: false, force: true, help: false, version: false
+    filterPaths: ["src"], tracePaths: ["events.jsonl"], autoTraces: false, providers: ["codex"], initialize: true, watch: true, port: 4321, json: false, force: true, help: false, version: false
   });
   assert.throws(() => parseArguments(["--max-nodes", "0"]), /positive integer/);
   assert.throws(() => parseArguments(["--unknown"]), /Unknown option/);
   assert.throws(() => parseArguments(["--provider", "other"]), /Invalid provider/);
+  assert.throws(() => parseArguments(["--port", "65536"]), /port must be/);
 });
 
 test("generates HTML atomically and protects existing output", async () => {

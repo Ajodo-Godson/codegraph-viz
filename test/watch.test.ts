@@ -1,0 +1,217 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { get } from "node:http";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import { inputFingerprint, startLiveVisualization } from "../src/watch.ts";
+import { createCodeGraphProject, insertFile } from "./fixtures.ts";
+
+test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-"));
+  const projectPath = join(root, "project");
+  const traceRoot = join(root, "traces");
+  const explicitTrace = join(root, "events.jsonl");
+  await mkdir(join(projectPath, ".codegraph"), { recursive: true });
+  await mkdir(traceRoot, { recursive: true });
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db-1");
+  await writeFile(join(projectPath, "src.ts"), "export const value = 1;\n");
+  await writeFile(join(projectPath, "codegraph-viz.json"), "{}");
+  await writeFile(join(traceRoot, "session.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "run", cwd: projectPath }
+  })}\n`);
+  await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "other", cwd: join(root, "other-project") }
+  })}\n`);
+  await writeFile(explicitTrace, "explicit-1\n");
+  execFileSync("git", ["init", "-b", "main"], { cwd: projectPath, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Fixture User"], { cwd: projectPath });
+  execFileSync("git", ["config", "user.email", "fixture@example.com"], { cwd: projectPath });
+  execFileSync("git", ["add", "."], { cwd: projectPath });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: projectPath, stdio: "ignore" });
+  const options = {
+    projectPath,
+    tracePaths: [explicitTrace],
+    providers: ["codex" as const],
+    traceRoots: { codex: traceRoot }
+  };
+
+  const initial = await inputFingerprint(options);
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db-22");
+  const indexed = await inputFingerprint(options);
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db-wal"), "wal-1");
+  const walIndexed = await inputFingerprint(options);
+  await writeFile(join(projectPath, "src.ts"), "export const value = 222;\n");
+  const committed = await inputFingerprint(options);
+  await writeFile(join(projectPath, "src.ts"), "export const value = 333;\n");
+  const editedAgain = await inputFingerprint(options);
+  await writeFile(join(projectPath, "untracked.ts"), "export const untracked = 1;\n");
+  const untracked = await inputFingerprint(options);
+  await writeFile(join(projectPath, "untracked.ts"), "export const untracked = 2;\n");
+  const untrackedAgain = await inputFingerprint(options);
+  await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "other", cwd: join(root, "other-project") }
+  })}\nextra\n`);
+  assert.equal(await inputFingerprint(options), untrackedAgain);
+  await writeFile(join(traceRoot, "session.jsonl"), `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-08-05T05:00:00Z",
+    payload: { id: "run", cwd: projectPath }
+  })}\nextra\n`);
+  const traced = await inputFingerprint(options);
+  await writeFile(explicitTrace, "explicit-222\n");
+  const explicit = await inputFingerprint(options);
+  await writeFile(join(projectPath, "codegraph-viz.json"), "{\"rename\":{}}\n");
+  const configured = await inputFingerprint(options);
+
+  assert.equal(new Set([
+    initial, indexed, walIndexed, committed, editedAgain, untracked,
+    untrackedAgain, traced, explicit, configured
+  ]).size, 10);
+});
+
+test("input fingerprint can exclude automatic provider traces", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-disabled-"));
+  const projectPath = join(root, "project");
+  const traceRoot = join(root, "traces");
+  await mkdir(join(projectPath, ".codegraph"), { recursive: true });
+  await mkdir(traceRoot);
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db");
+  await writeFile(join(traceRoot, "session.jsonl"), "event-1\n");
+  const options = { projectPath, autoTraces: false, traceRoots: { codex: traceRoot } };
+  const initial = await inputFingerprint(options);
+  await writeFile(join(traceRoot, "session.jsonl"), "event-222\n");
+  assert.equal(await inputFingerprint(options), initial);
+});
+
+test("input fingerprint tracks changes before the first Git commit", async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-unborn-"));
+  await mkdir(join(projectPath, ".codegraph"), { recursive: true });
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db");
+  await writeFile(join(projectPath, "app.ts"), "export const value = 1;\n");
+  execFileSync("git", ["init", "-b", "main"], { cwd: projectPath, stdio: "ignore" });
+  const options = { projectPath, autoTraces: false };
+
+  const initial = await inputFingerprint(options);
+  await writeFile(join(projectPath, "app.ts"), "export const value = 2;\n");
+  const edited = await inputFingerprint(options);
+  execFileSync("git", ["add", "--", "app.ts"], { cwd: projectPath });
+  const staged = await inputFingerprint(options);
+
+  assert.equal(new Set([initial, edited, staged]).size, 3);
+});
+
+test("input fingerprint distinguishes branches at the same commit", async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), "codegraph-viz-watch-branch-"));
+  await mkdir(join(projectPath, ".codegraph"), { recursive: true });
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db");
+  await writeFile(join(projectPath, "app.ts"), "export const value = 1;\n");
+  execFileSync("git", ["init", "-b", "main"], { cwd: projectPath, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Fixture User"], { cwd: projectPath });
+  execFileSync("git", ["config", "user.email", "fixture@example.com"], { cwd: projectPath });
+  execFileSync("git", ["add", "."], { cwd: projectPath });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: projectPath, stdio: "ignore" });
+  execFileSync("git", ["branch", "feature"], { cwd: projectPath });
+  const options = { projectPath, autoTraces: false };
+
+  const main = await inputFingerprint(options);
+  execFileSync("git", ["switch", "feature"], { cwd: projectPath, stdio: "ignore" });
+  const feature = await inputFingerprint(options);
+
+  assert.notEqual(feature, main);
+});
+
+test("live server reloads after trace changes while keeping the snapshot offline", { timeout: 15_000 }, async () => {
+  const fixture = await createCodeGraphProject({ indexState: "indexing", populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 0 });
+  } });
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-live-"));
+  const outputPath = join(root, "map.html");
+  const tracePath = join(root, "events.jsonl");
+  await writeFile(tracePath, "");
+  await writeFile(outputPath, "previous snapshot");
+  let resolveUpdate: (() => void) | undefined;
+  let updatedWarnings: string[] = [];
+  const updated = new Promise<void>((resolvePromise) => { resolveUpdate = resolvePromise; });
+  const live = await startLiveVisualization({
+    projectPath: fixture.projectPath,
+    outputPath,
+    tracePaths: [tracePath],
+    autoTraces: false,
+    intervalMs: 20,
+    remoteRefreshMs: 60_000,
+    port: 0,
+    onUpdate: (result) => {
+      updatedWarnings = result.warnings;
+      resolveUpdate?.();
+    }
+  });
+  try {
+    assert.match(live.warnings.join("\n"), /index_state is "indexing"/);
+    assert.doesNotMatch(await readFile(outputPath, "utf8"), /previous snapshot/);
+
+    for (const path of ["", "__codegraph_viz_events"]) {
+      const rejected = await new Promise<{ statusCode?: number; body: string }>((resolvePromise, reject) => {
+        const request = get(`${live.url}${path}`, { headers: { Host: "attacker.example" } }, (response) => {
+          response.setEncoding("utf8");
+          let body = "";
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolvePromise({ statusCode: response.statusCode, body }));
+        });
+        request.on("error", reject);
+      });
+      assert.equal(rejected.statusCode, 421);
+      assert.doesNotMatch(rejected.body, /CodeGraph map/);
+    }
+
+    const served = await fetch(live.url).then((response) => response.text());
+    assert.match(served, /EventSource\("\/__codegraph_viz_events\?generation=0"\)/);
+    assert.match(served, /connect-src 'self'/);
+    const snapshot = await readFile(outputPath, "utf8");
+    assert.doesNotMatch(snapshot, /EventSource/);
+    assert.doesNotMatch(snapshot, /connect-src/);
+
+    const missedUpdate = new Promise<void>((resolvePromise, reject) => {
+      const request = get(`${live.url}__codegraph_viz_events?generation=-1`, (response) => {
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          if (chunk.includes("event: reload")) {
+            request.destroy();
+            resolvePromise();
+          }
+        });
+      });
+      request.on("error", (error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ECONNRESET") reject(error);
+      });
+    });
+    await missedUpdate;
+
+    let resolveConnected: (() => void) | undefined;
+    const connected = new Promise<void>((resolvePromise) => { resolveConnected = resolvePromise; });
+    const reloaded = new Promise<void>((resolvePromise, reject) => {
+      const request = get(`${live.url}__codegraph_viz_events?generation=0`, (response) => {
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          resolveConnected?.();
+          if (chunk.includes("event: reload")) resolvePromise();
+        });
+      });
+      request.on("error", reject);
+    });
+    await connected;
+    await writeFile(tracePath, `${JSON.stringify({
+      id: "live-event", timestamp: "2026-08-05T05:00:00Z", runId: "live-run",
+      agentId: "root", kind: "file_read", target: "src/index.ts"
+    })}\n`);
+    await Promise.all([updated, reloaded]);
+    assert.match(updatedWarnings.join("\n"), /index_state is "indexing"/);
+    assert.match(await readFile(outputPath, "utf8"), /live-event/);
+  } finally {
+    await live.close();
+  }
+});

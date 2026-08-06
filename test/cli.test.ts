@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -53,7 +53,7 @@ test("--json remains parseable when --init creates the index", async () => {
   await mkdir(projectPath);
   await mkdir(binDir);
   const command = join(binDir, "codegraph");
-  await writeFile(command, "#!/bin/sh\nmkdir -p \"$2/.codegraph\"\ncp \"$FIXTURE_DB\" \"$2/.codegraph/codegraph.db\"\n");
+  await writeFile(command, "#!/bin/sh\necho \"codegraph init progress\"\nmkdir -p \"$2/.codegraph\"\ncp \"$FIXTURE_DB\" \"$2/.codegraph/codegraph.db\"\n");
   await chmod(command, 0o755);
 
   const { stdout, stderr } = await execFileAsync(
@@ -71,5 +71,63 @@ test("--json remains parseable when --init creates the index", async () => {
 
   assert.equal(JSON.parse(stdout).stats.fileCount, 1);
   assert.match(stderr, /Initializing CodeGraph/);
+  assert.match(stderr, /codegraph init progress/);
   assert.match(stderr, /CodeGraph index ready/);
+});
+
+test("--watch with --json fails before initializing CodeGraph", async () => {
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-invalid-mode-"));
+  const projectPath = join(root, "project");
+  const binDir = join(root, "bin");
+  await mkdir(projectPath);
+  await mkdir(binDir);
+  const command = join(binDir, "codegraph");
+  await writeFile(command, `#!/bin/sh\ntouch "${join(root, "initialized")}"\n`);
+  await chmod(command, 0o755);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, ["bin/codegraph-viz.ts", projectPath, "--watch", "--json", "--init"], {
+      cwd: process.cwd(),
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` }
+    }),
+    (error: Error & { stderr?: string }) => {
+      assert.match(error.stderr ?? "", /--watch cannot be combined with --json/);
+      return true;
+    }
+  );
+  await assert.rejects(readFile(join(root, "initialized")));
+});
+
+test("--watch serves locally until terminated", { timeout: 15_000 }, async () => {
+  const fixture = await createCodeGraphProject({ indexState: "indexing", populate(database) {
+    insertFile(database, { path: "src/index.ts", nodeCount: 0 });
+  } });
+  const root = await mkdtemp(join(tmpdir(), "codegraph-viz-cli-watch-"));
+  const outputPath = join(root, "map.html");
+  const child = spawn(process.execPath, [
+    "bin/codegraph-viz.ts", fixture.projectPath, "--watch", "--port", "0",
+    "--no-agent-traces", "-o", outputPath
+  ], { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
+  const exited = new Promise<number | null>((resolvePromise) => child.on("exit", resolvePromise));
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  try {
+    const url = await new Promise<string>((resolvePromise, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Timed out waiting for live URL. Output: ${stdout}`)), 10_000);
+      child.stdout.on("data", () => {
+        const match = stdout.match(/Live visualization: (http:\/\/127\.0\.0\.1:\d+\/)/);
+        if (match?.[1]) { clearTimeout(timeout); resolvePromise(match[1]); }
+      });
+      child.on("exit", (code) => { clearTimeout(timeout); reject(new Error(`Watch process exited early with ${String(code)}.`)); });
+    });
+    assert.match(await fetch(url).then((response) => response.text()), /EventSource/);
+    assert.match(stderr, /Warning: CodeGraph index_state is "indexing"/);
+  } finally {
+    child.kill("SIGTERM");
+  }
+  assert.equal(await exited, 0);
 });

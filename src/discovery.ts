@@ -356,7 +356,7 @@ export function adaptClaudeTrace(records: JsonRecord[], projectPath: string, sou
   return normalizeProvenance(raw, { provider: "claude", sourceRef });
 }
 
-async function traceFiles(root: string): Promise<string[]> {
+export async function findTraceFiles(root: string): Promise<string[]> {
   const result: string[] = [];
   async function walk(directory: string, depth: number): Promise<void> {
     if (depth > 7) return;
@@ -372,19 +372,57 @@ async function traceFiles(root: string): Promise<string[]> {
   return result.sort();
 }
 
+export function defaultTraceRoot(provider: TraceProvider): string {
+  if (provider === "codex") {
+    return process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions");
+  }
+  return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects");
+}
+
+interface TraceMatchCacheEntry {
+  size: bigint;
+  mtimeNs: bigint;
+  matched: boolean;
+}
+
+const traceMatchCache = new Map<string, TraceMatchCacheEntry>();
+
+export async function findMatchingTraceFiles(
+  provider: TraceProvider,
+  root: string,
+  projectPath: string
+): Promise<string[]> {
+  const resolvedProjectPath = resolve(projectPath);
+  const matched: string[] = [];
+  for (const path of await findTraceFiles(root)) {
+    try {
+      const info = await stat(path, { bigint: true });
+      if (info.size > MAX_TRACE_BYTES) continue;
+      const key = `${provider}\0${resolvedProjectPath}\0${path}`;
+      const cached = traceMatchCache.get(key);
+      let isMatch = cached?.size === info.size && cached.mtimeNs === info.mtimeNs
+        ? cached.matched
+        : traceMatches(provider, parseLines(await readFile(path, "utf8")).records, resolvedProjectPath);
+      if (!cached || cached.size !== info.size || cached.mtimeNs !== info.mtimeNs) {
+        traceMatchCache.set(key, { size: info.size, mtimeNs: info.mtimeNs, matched: isMatch });
+      }
+      if (isMatch) matched.push(path);
+    } catch {
+      // Discovery reports unreadable files; fingerprinting only needs usable inputs.
+    }
+  }
+  return matched;
+}
+
 export async function discoverAgentTraces(options: DiscoverTraceOptions): Promise<TraceDiscoveryResult> {
   const projectPath = resolve(options.projectPath);
   const providers = options.providers?.length ? [...new Set(options.providers)] : ["codex", "claude"] as TraceProvider[];
-  const defaults: Record<TraceProvider, string> = {
-    codex: process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions"),
-    claude: process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, "projects") : join(homedir(), ".claude", "projects")
-  };
   const diagnostics: TraceDiscoveryDiagnostic[] = [];
   const allEvents: ProvenanceEvent[] = [];
 
   for (const provider of providers) {
-    const root = options.roots?.[provider] ?? defaults[provider];
-    const files = await traceFiles(root);
+    const root = options.roots?.[provider] ?? defaultTraceRoot(provider);
+    const files = await findTraceFiles(root);
     const diagnostic: TraceDiscoveryDiagnostic = {
       provider, filesScanned: files.length, sessionsMatched: 0, eventsImported: 0, skippedFiles: 0,
       malformedRecords: 0, unsupportedRecords: 0, incompleteRecords: 0, warnings: []

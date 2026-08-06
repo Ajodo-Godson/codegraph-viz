@@ -238,7 +238,15 @@ non-interactive use. The installer prints direct Codex and Claude MCP
 registration commands. Script-based uninstall removes only codegraph-viz files
 and launchers.
 
-Implementation status: M0 through M10 and M5.1 are complete. Provider traces are
+**M11. Live visualization.** `--watch` keeps the offline snapshot current and
+serves it from a local-only HTTP server. Input fingerprinting covers the
+CodeGraph database, Git state, layer configuration, explicit provenance files,
+and enabled native provider traces. Changed inputs trigger atomic regeneration
+and a same-origin server-sent event reloads the browser. Remote review evidence
+is refreshed periodically. The live script and its `connect-src` allowance are
+injected only into the served response, never into the saved HTML.
+
+Implementation status: M0 through M11 and M5.1 are complete. Provider traces are
 discovered automatically from local Codex and Claude sessions or imported with
 `--trace <file>` as canonical JSON or JSONL events. Git inspection is read-only,
 GitHub review evidence is optional and read through `gh`, and attribution is

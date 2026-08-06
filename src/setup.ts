@@ -3,11 +3,16 @@ import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-export type CodeGraphInitRunner = (command: string, args: string[]) => Promise<void>;
+export type CodeGraphInitRunner = (
+  command: string,
+  args: string[],
+  stdout?: "inherit" | "stderr"
+) => Promise<void>;
 
 interface EnsureIndexOptions {
   timeoutMs?: number;
   pollMs?: number;
+  stdout?: "inherit" | "stderr";
 }
 
 function databasePath(projectPath: string): string {
@@ -20,8 +25,10 @@ export function hasCodeGraphIndex(projectPath: string): boolean {
   return stats?.isFile() ?? false;
 }
 
-const runCodeGraphInit: CodeGraphInitRunner = (command, args) => new Promise((resolvePromise, reject) => {
-  const child = spawn(command, args, { stdio: "inherit" });
+const runCodeGraphInit: CodeGraphInitRunner = (command, args, stdout = "inherit") => new Promise((resolvePromise, reject) => {
+  const child = spawn(command, args, {
+    stdio: ["inherit", stdout === "stderr" ? process.stderr : "inherit", "inherit"]
+  });
   child.on("error", (error) => reject(new Error(`Unable to initialize CodeGraph: ${error.message}`, { cause: error })));
   child.on("exit", (code, signal) => {
     if (code === 0) resolvePromise();
@@ -37,7 +44,7 @@ export async function ensureCodeGraphIndex(
   const resolvedProjectPath = resolve(projectPath);
   if (hasCodeGraphIndex(resolvedProjectPath)) return "existing";
 
-  await runner("codegraph", ["init", resolvedProjectPath]);
+  await runner("codegraph", ["init", resolvedProjectPath], options.stdout);
   const timeoutMs = options.timeoutMs ?? 15_000;
   const pollMs = options.pollMs ?? 100;
   const deadline = Date.now() + timeoutMs;
