@@ -43,6 +43,8 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   const initial = await inputFingerprint(options);
   await writeFile(join(projectPath, ".codegraph", "codegraph.db"), "db-22");
   const indexed = await inputFingerprint(options);
+  await writeFile(join(projectPath, ".codegraph", "codegraph.db-wal"), "wal-1");
+  const walIndexed = await inputFingerprint(options);
   await writeFile(join(projectPath, "src.ts"), "export const value = 222;\n");
   const committed = await inputFingerprint(options);
   await writeFile(join(traceRoot, "unrelated.jsonl"), `${JSON.stringify({
@@ -60,7 +62,7 @@ test("input fingerprint tracks CodeGraph, Git, configuration, and trace changes"
   await writeFile(join(projectPath, "codegraph-viz.json"), "{\"rename\":{}}\n");
   const configured = await inputFingerprint(options);
 
-  assert.equal(new Set([initial, indexed, committed, traced, explicit, configured]).size, 6);
+  assert.equal(new Set([initial, indexed, walIndexed, committed, traced, explicit, configured]).size, 7);
 });
 
 test("input fingerprint can exclude automatic provider traces", async () => {

@@ -36,6 +36,8 @@ export async function inputFingerprint(options: GenerateOptions): Promise<string
   const projectPath = resolve(options.projectPath ?? process.cwd());
   const paths = [
     join(projectPath, ".codegraph", "codegraph.db"),
+    join(projectPath, ".codegraph", "codegraph.db-wal"),
+    join(projectPath, ".codegraph", "codegraph.db-shm"),
     join(projectPath, "codegraph-viz.json"),
     ...(options.tracePaths ?? []).map((path) => resolve(path))
   ];
